@@ -20,15 +20,18 @@ async function optionalAuth(req, res, next) {
 }
 
 async function requireAuth(req, res, next) {
-  const token = bearer(req);
-  if (!token) return res.status(401).json({ message: "Missing Bearer token" });
+  try {
+    const token = bearer(req);
+    if (!token) return res.status(401).json({ message: "Missing Bearer token" });
 
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user)
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data?.user) return res.status(401).json({ message: "Invalid token" });
+
+    req.user = data.user;
+    return next();
+  } catch {
     return res.status(401).json({ message: "Invalid token" });
-
-  req.user = data.user;
-  return next();
+  }
 }
 
 module.exports = { optionalAuth, requireAuth };

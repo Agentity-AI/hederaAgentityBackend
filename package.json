@@ -6,10 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-
     "sandbox:build": "docker build -t agentity-sandbox ./src/sandbox",
     "sandbox:run": "docker run --rm agentity-sandbox",
-
     "db:schema:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",
     "db:check": "node -e \"require('dotenv').config(); const { Client } = require('pg'); (async()=>{ const c=new Client({ connectionString: process.env.DATABASE_URL, ssl:{rejectUnauthorized:false} }); await c.connect(); console.log('DB OK'); await c.end(); })().catch(e=>{ console.error(e.message); process.exit(1); });\""
   },
@@ -17,7 +15,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.97.0",
+    "@supabase/supabase-js": "^2.98.0",
     "axios": "^1.13.5",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

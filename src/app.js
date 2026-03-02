@@ -12,6 +12,7 @@ const agentRoutes = require("./routes/agents");
 const simulationRoutes = require("./routes/simulation");
 const executionRoutes = require("./routes/execution");
 const dashboardRoutes = require("./routes/dashboard");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 
@@ -20,7 +21,7 @@ app.use(
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.use(express.json());
@@ -51,6 +52,7 @@ app.use("/agents", agentRoutes);
 app.use("/simulation", simulationRoutes);
 app.use("/execute", executionRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/auth", authRoutes);
 
 app.get("/health", async (req, res) => {
   try {
