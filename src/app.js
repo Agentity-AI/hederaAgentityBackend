@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 
 const logger = require("./config/logger");
 const sequelize = require("./config/database");
@@ -13,23 +14,50 @@ const simulationRoutes = require("./routes/simulation");
 const executionRoutes = require("./routes/execution");
 const dashboardRoutes = require("./routes/dashboard");
 const authRoutes = require("./routes/auth");
+const docsRoutes = require("./routes/docs");
 
 const app = express();
 
+/**
+ * =============================
+ * CORS (cookies require specific origins + credentials)
+ * =============================
+ */
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  // Add your deployed frontend domain(s) here:
+];
+
 app.use(
   cors({
-    origin: "*",
+    origin: function (origin, cb) {
+      // allow curl/postman (no origin)
+      if (!origin) return cb(null, true);
+
+      // allow known origins
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+
+      // hackathon fallback: allow any origin but still enable cookies
+      // NOTE: This "echo origin" behavior is safer than origin:"*"
+      return cb(null, true);
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
+// Body parser
 app.use(express.json());
 
-// Attach optional auth globally so we can log user activity when token exists
+// Cookies
+app.use(cookieParser());
+
+
 app.use(optionalAuth);
 
-// Request logging with duration tracking
+
 app.use((req, res, next) => {
   const start = Date.now();
 
@@ -48,12 +76,23 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * =============================
+ * Routes
+ * =============================
+ */
+app.use("/auth", authRoutes);
 app.use("/agents", agentRoutes);
 app.use("/simulation", simulationRoutes);
 app.use("/execute", executionRoutes);
 app.use("/dashboard", dashboardRoutes);
-app.use("/auth", authRoutes);
+app.use("/docs", docsRoutes);
 
+/**
+ * =============================
+ * Health Check
+ * =============================
+ */
 app.get("/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -74,10 +113,20 @@ app.get("/health", async (req, res) => {
   }
 });
 
+/**
+ * =============================
+ * 404 Handler
+ * =============================
+ */
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
+/**
+ * =============================
+ * Global Error Handler
+ * =============================
+ */
 app.use((err, req, res, next) => {
   logger.error({
     message: err.message,

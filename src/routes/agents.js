@@ -64,6 +64,75 @@ function normalizeRegisterPayload(body) {
   };
 }
 
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Agents
+ *     description: Agent registry and verification
+ */
+
+/**
+ * @openapi
+ * /agents/register:
+ *   post:
+ *     tags: [Agents]
+ *     summary: Register agent (accepts frontend form fields)
+ *     description: Supports both camelCase and snake_case fields.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               agentName: { type: string, example: "My Trading Agent" }
+ *               agent_name: { type: string, example: "My Trading Agent" }
+ *               description: { type: string, example: "Agent description and capabilities" }
+ *               agentType: { type: string, example: "Trading Bot" }
+ *               walletAddress: { type: string, example: "0xabc..." }
+ *               public_key: { type: string, example: "0xabc..." }
+ *               apiEndpoint: { type: string, example: "https://api.example.com/agent" }
+ *               metadata: { type: string, example: "{\"key\":\"value\"}" }
+ *             required: [agentName, walletAddress]
+ *     responses:
+ *       201:
+ *         description: Agent created
+ *       409:
+ *         description: Agent already exists
+ *
+ * /agents/{id}:
+ *   get:
+ *     tags: [Agents]
+ *     summary: Get agent by id
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: OK
+ *       404:
+ *         description: Not found
+ *
+ * /agents/{id}/verify:
+ *   post:
+ *     tags: [Agents]
+ *     summary: Verify agent
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Verified
+ *       404:
+ *         description: Not found
+ */
+
+
 router.post("/register", async (req, res) => {
   try {
     const p = normalizeRegisterPayload(req.body || {});
