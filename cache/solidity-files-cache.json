@@ -1,9 +1,9 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "C:\\Users\\USER\\Desktop\\agentity\\Agentity-Backend\\contracts\\ERC8004AgentRegistry.sol": {
-      "lastModificationDate": 1771946148863,
-      "contentHash": "6c980d1cc73af33dcf69198b407c435a",
+    "/Users/decagon/Documents/Kaycee - Founders Cohort/Agentity/contracts/ERC8004AgentRegistry.sol": {
+      "lastModificationDate": 1772272522861,
+      "contentHash": "fe0ce33b2c7ea769427b799b515900d7",
       "sourceName": "contracts/ERC8004AgentRegistry.sol",
       "solcConfig": {
         "version": "0.8.20",
