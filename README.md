@@ -1,480 +1,593 @@
 # Agentity Backend
 
-Agentity is a backend service for registering, verifying, simulating, auditing, and executing AI agents.
+Agentity is a backend platform for **registering, simulating, auditing, and executing AI agents with verifiable blockchain traceability**.
 
-It integrates:
-- **Supabase Postgres** (database)
-- **Supabase Auth** (JWT + `httpOnly` cookie)
-- **Docker** sandbox simulations
-- **Chainlink CRE** workflow (local simulation; webhook execution when deployed)
-- **Avalanche Fuji** smart contract logging for on-chain execution traceability
+The system enables AI agents to:
 
-## Live URLs
+* register identities
+* simulate actions safely
+* execute tasks
+* coordinate work
+* settle payments via **Hedera microtransactions**
+* produce **auditable execution trails**
 
-- Backend (Render): https://agentity-backend.onrender.com
-- Swagger Docs: https://agentity-backend.onrender.com/docs
+This backend powers **AI-agent automation workflows for Web3 environments**.
 
-## Local Setup
 
-### 1) Install
+# Core Stack
+
+Agentity integrates the following infrastructure:
+
+* **Supabase Postgres** → primary database
+* **Supabase Auth** → JWT authentication + httpOnly cookies
+* **Docker Sandbox** → secure AI simulation environments
+* **Chainlink CRE** → workflow automation and agent execution orchestration
+* **Hedera Hashgraph** → microtransaction payments between agents
+* **AWS KMS** → secure cryptographic signing and compliance audit logs
+* **Express + Sequelize** → backend API architecture
+
+
+# Live URLs
+
+Backend API:
+
+```
+https://hederaagentitybackend.onrender.com
+```
+
+Swagger API documentation:
+
+```
+https://hederaagentitybackend.onrender.com/docs
+```
+
+
+# Local Setup
+
+## 1. Install dependencies
 
 ```bash
 npm install
+```
 
-2) Environment Variables (.env)
 
-Required:
+# Environment Variables
 
-DATABASE_URL
+Create a `.env` file.
 
-SUPABASE_URL
+## Required
 
-SUPABASE_SERVICE_ROLE_KEY
+```
+DATABASE_URL=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_ANON_KEY=
+```
 
-SUPABASE_ANON_KEY
 
-Optional (CRE live execution):
+## Optional — Chainlink CRE
 
-CRE_WEBHOOK_URL
-
-CRE_API_KEY
-
-Optional (Avalanche / blockchain logging):
-
-AVALANCHE_RPC_URL
-
-AVALANCHE_FUJI_REGISTRY_ADDRESS
-
-OPERATOR_PRIVATE_KEY
-
-SNOWTRACE_API_KEY
-
-Example:
-
-DATABASE_URL=postgresql://...
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
-SUPABASE_ANON_KEY=eyJ...
-
+```
 CRE_WEBHOOK_URL=
 CRE_API_KEY=
+```
 
-AVALANCHE_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
-AVALANCHE_FUJI_REGISTRY_ADDRESS=0x...
-OPERATOR_PRIVATE_KEY=
-SNOWTRACE_API_KEY=
-3) Run
+
+## Optional — Hedera
+
+```
+HEDERA_OPERATOR_ID=
+HEDERA_OPERATOR_KEY=
+HEDERA_NETWORK=testnet
+```
+
+
+## Optional — AWS KMS
+
+```
+AWS_REGION=
+AWS_KMS_KEY_ID=
+```
+
+
+# Run the server
+
+```
 npm run dev
+```
 
-Server runs on:
+Server will run on:
 
+```
 http://localhost:5000
+```
 
-API Documentation (Swagger)
+
+# API Documentation
 
 Swagger UI:
 
-Local: http://localhost:5000/docs
+Local:
 
-Render: https://agentity-backend.onrender.com/docs
+```
+http://localhost:5000/docs
+```
 
-Swagger supports Try it out to execute requests directly.
+Production:
 
-Auth Flow (Supabase)
+```
+https://agentity-backend.onrender.com/docs
+```
 
-Endpoints:
+Swagger allows direct API testing through **Try It Out**.
 
+
+
+# Authentication Flow
+
+Agentity uses **Supabase Auth**.
+
+### Endpoints
+
+```
 POST /auth/register
-
 POST /auth/login
-
 POST /auth/logout
-
-Auth behavior:
-
-Returns jwt (Supabase access_token)
-
-Sets agentity_jwt httpOnly cookie (preferred)
-
-Frontend must send cookies:
-
-fetch: credentials: "include"
-
-axios: withCredentials: true
-
-All protected endpoints accept either:
-
-Authorization: Bearer <jwt>
-
-agentity_jwt cookie
-
-Core Backend Routes
-Auth
-
-Endpoints:
-
-POST /auth/register
-
-POST /auth/login
-
-POST /auth/logout
+```
 
 Auth returns:
 
-jwt (Supabase access token)
+```
+jwt → Supabase access token
+```
 
-Sets agentity_jwt httpOnly cookie
+And sets a cookie:
 
-Protected routes can be accessed with either:
+```
+agentity_jwt (httpOnly)
+```
 
+
+### Protected endpoints accept either
+
+```
 Authorization: Bearer <jwt>
+```
 
+or
+
+```
 agentity_jwt cookie
+```
 
-Agents
 
-Agents are now owned by the authenticated user.
+# Core Backend Modules
 
-Each agent is stored with:
 
+# Agents
+
+Agents represent autonomous AI services.
+
+Each agent belongs to a specific user.
+
+```
 creator_id → Supabase user id
+```
 
-Endpoints:
 
-POST /agents/register (requires auth)
+### Register Agent
 
-GET /agents/my (get agents registered by authenticated user)
+```
+POST /agents/register
+```
 
-GET /agents/user/:userId (get agents registered by a specific user)
+Creates:
 
+* Agent
+* AgentMetadata
+* AgentReputation
+* AgentBehaviorLog
+* User audit log
+
+---
+
+### Fetch User Agents
+
+```
+GET /agents/my
+```
+
+Returns agents created by the authenticated user.
+
+---
+
+### Fetch Agents by User
+
+```
+GET /agents/user/:userId
+```
+
+---
+
+### Fetch Agent Profile
+
+```
 GET /agents/:id
+```
 
+---
+
+### Verify Agent
+
+```
 POST /agents/:id/verify
+```
 
-Agent registration automatically stores:
+Verification is required before execution.
 
-creator_id = req.user.id
 
-This allows:
+# Simulation Engine
 
-user-specific dashboards
+Simulations test agent behavior safely.
 
-ownership tracking
+Simulation runs inside a **sandbox container**.
 
-filtering agents by creator
 
-Agent registration also creates:
+### Run Simulation
 
-agent metadata
-
-reputation record
-
-behavior registration log
-
-user activity log
-
-Registration is wrapped in a database transaction so failed writes roll back cleanly.
-
-Simulation
-
-This module powers the frontend Simulation Sandbox screen.
-
-Endpoints:
-
-GET /simulation/scenarios
-
+```
 POST /simulation/run
+```
 
-GET /simulation/history
+or
 
-POST /simulation/:id (legacy / backward-compatible route)
+```
+POST /simulation/:id
+```
 
-Simulation flow:
 
-User selects one of their registered agents
+### Simulation Result Example
 
-User selects a scenario type
-
-Backend runs sandbox simulation
-
-Result is stored in simulation_runs
-
-Simulation history becomes available for the user
-
-User activity is logged
-
-Example simulation response:
-
+```json
 {
   "id": "simulation-run-uuid",
   "agentId": "agent-uuid",
-  "agentName": "My Trading Agent",
-  "scenario": "Token Swap",
+  "scenario": "token_swap",
   "riskScore": 36,
   "vulnerabilities": 1,
-  "status": "completed",
-  "createdAt": "2026-03-11T12:00:00.000Z",
-  "result": {
-    "summary": "Simulation completed successfully"
-  }
+  "status": "completed"
 }
-Smart Contract Audits
+```
 
-This module powers the frontend Smart Contract Audits screen.
 
-Endpoints:
+# Smart Contract Audit
 
+Agents can analyze smart contracts.
+
+Supports:
+
+```
+paste source
+github repository
+```
+
+
+### Run Audit
+
+```
 POST /audits
+```
 
+
+### Audit History
+
+```
 GET /audits/history
+```
 
+
+### Audit Details
+
+```
 GET /audits/:id
+```
 
-Supported source types:
 
-paste
+# Hedera Agent Wallets
 
-github
+Agents can be linked to **Hedera accounts**.
 
-Audit flow:
+This allows:
 
-User submits contract name and source
+* agent payments
+* microtransactions
+* coordination marketplaces
 
-Backend runs audit analysis
 
-Result is stored in smart_contract_audits
+### Link Wallet
 
-Audit history becomes available for the user
+```
+POST /wallets/link
+```
 
-Full audit detail can be fetched by audit id
+Payload:
 
-Example audit response:
-
+```json
 {
-  "id": "audit-uuid",
-  "contractName": "LiquidityPool",
-  "riskLevel": "medium",
-  "consensusScore": 72,
-  "status": "completed",
-  "createdAt": "2026-03-11T12:00:00.000Z",
-  "findings": [],
-  "summary": "LiquidityPool completed audit with 2 finding(s). Overall risk is medium."
+  "agentId": "uuid",
+  "hederaAccountId": "0.0.12345",
+  "hederaPublicKey": "public-key",
+  "kmsKeyId": "optional"
 }
+```
+
+
+# Task Execution System
+
+Tasks allow users to request work from AI agents.
+
+Example tasks:
+
+* AI analysis
+* smart contract audit
+* blockchain execution
+* data processing
+
+
+## Task Lifecycle
+
+```
+Request
+↓
+Simulation
+↓
+Payment (Hedera)
+↓
 Execution
-POST /execute/:id
+↓
+Audit log
+```
 
-Execution pipeline:
 
-Agent → Sandbox Simulation → CRE Workflow → Execution Result
+### Create Task
 
-Steps:
+```
+POST /tasks/request
+```
 
-Agent must be verified
 
-Sandbox simulation runs
+### Simulate Task
 
-CRE workflow evaluates execution
+```
+POST /tasks/:id/simulate
+```
 
-Result is logged to the database
 
-Optional blockchain action logging runs if blockchain_agent_id exists
+### Pay For Task
 
-If CRE webhook is not configured:
+```
+POST /tasks/:id/pay
+```
 
-execution falls back to local execution response
+Creates Hedera microtransaction.
 
-Example execution response:
 
-{
-  "simulation": {},
-  "execution": {},
-  "blockchain": {
-    "success": true,
-    "txHash": "0x..."
-  }
-}
-Dashboard
-GET /dashboard/overview
+### Execute Task
 
-Requires authentication.
+```
+POST /tasks/:id/execute
+```
 
-Dashboard data is built from the authenticated user inside the JWT.
+Execution includes:
 
-The backend extracts the user from:
+* sandbox validation
+* CRE workflow
+* optional AWS KMS signature
 
-req.user.id
-req.user.email
-req.user.user_metadata
 
-The dashboard aggregates:
+### Task History
 
-agents created by the user
+```
+GET /tasks/history
+```
 
-verified agents created by the user
 
-simulation activity
+# Hedera Payment Records
 
-execution activity
+Payments between users and agents are stored.
 
-vulnerability detections
 
-recent user activity
+### Payment History
 
-active agent
-
-chart data
-
-Example response:
-
-{
-  "email": "user@mail.com",
-  "name": "John Doe",
-  "Totalagent": 3,
-  "TotalvarifiedAgent": 2,
-  "activeSimulation": 1,
-  "VulnerabilitiesDetected": 0,
-  "TransactionsExecuted": 4,
-  "chart": {
-    "labels": ["2026-03-01", "2026-03-02"],
-    "Verification": [1, 1],
-    "Vulnerability": [0, 0]
-  },
-  "activeAgent": {},
-  "RecentActivity": []
-}
-Health
-GET /health
-
-Returns service status and database connectivity.
+```
+GET /payments/history
+```
 
 Example:
 
+```json
 {
-  "status": "healthy",
-  "database": "connected",
-  "uptime": 124.23
+  "id": "payment-uuid",
+  "amountHbar": 0.5,
+  "hederaTxId": "0.0.1234@1680000000",
+  "status": "paid"
 }
-Chainlink CRE (Local Simulation)
+```
 
-CRE workflow folder:
 
+# AWS KMS Signing
+
+KMS enables secure signing of agent operations.
+
+Benefits:
+
+* enterprise key management
+* audit trail
+* cryptographic compliance
+
+
+### KMS Audit Logs
+
+Stored in table:
+
+```
+kms_audit_logs
+```
+
+Each log records:
+
+* user id
+* agent id
+* key used
+* payload signed
+* signature result
+
+
+# Chainlink CRE Workflow
+
+CRE manages agent automation.
+
+Workflow location:
+
+```
 agentity-cre/agent-execution
+```
 
-Run:
 
+### Run CRE simulation
+
+```
 cd agentity-cre
 bun install --cwd ./agent-execution
 cre workflow simulate agent-execution --target staging-settings
+```
 
-Deployment notes:
 
-CRE workflow deployment is currently early access
+# Health Check
 
-When enabled, set CRE_WEBHOOK_URL + CRE_API_KEY in Render for live execution
+```
+GET /health
+```
 
-Current CRE workflow status:
+Example response:
 
-workflow compiles successfully
+```json
+{
+  "status": "healthy",
+  "database": "connected"
+}
+```
 
-workflow simulation runs successfully
 
-Avalanche Fuji contract address is injected into workflow config
+# Database Tables
 
-live CRE deployment is pending access approval
+Key tables include:
 
-Avalanche Smart Contract
-
-Deployed contract:
-
-ERC8004AgentRegistry
-
-Used for:
-
-agent registry tracking
-
-action logging on-chain
-
-execution traceability
-
-Available test scripts:
-
-scripts/read-latest-agent.js
-
-scripts/register-test-agent.js
-
-scripts/log-test-action.js
-
-Example usage:
-
-npx hardhat run scripts/read-latest-agent.js --network fuji
-npx hardhat run scripts/register-test-agent.js --network fuji
-npx hardhat run scripts/log-test-action.js --network fuji
-Suggested Test Flow (End-to-End)
-
-Open Swagger: /docs
-
-Register/Login user: /auth/register or /auth/login
-
-Register agent: /agents/register
-
-Verify agent: /agents/:id/verify
-
-Fetch user agents: /agents/my
-
-Load simulation scenarios: /simulation/scenarios
-
-Run simulation: /simulation/run
-
-View simulation history: /simulation/history
-
-Create smart contract audit: /audits
-
-View audit history: /audits/history
-
-View audit detail: /audits/:id
-
-Execute verified agent: /execute/:id
-
-View dashboard: /dashboard/overview
-
-Run CRE simulation from agentity-cre
-
-Optionally test Avalanche smart contract scripts
-
-Database Notes
-
-Main tables currently used include:
-
-Agents
-
-AgentMetadata
-
-AgentReputations
-
-AgentBehaviorLogs
-
-user_agent_events
-
+```
+agents
+agent_metadata
+agent_reputations
+agent_behavior_logs
 simulation_runs
-
 smart_contract_audits
+task_executions
+payment_records
+agent_wallets
+kms_audit_logs
+user_agent_events
+```
 
-Current Backend Scope
 
-The backend now supports:
+# End-to-End Test Flow
 
-user authentication
+1. Register user
 
-user-owned agents
+```
+POST /auth/register
+```
 
-simulation workflows
+2. Login
 
-smart contract audit workflows
+```
+POST /auth/login
+```
 
-execution workflows
+3. Register agent
 
-dashboard aggregation
+```
+POST /agents/register
+```
 
-blockchain logging
+4. Verify agent
 
-CRE simulation support
+```
+POST /agents/:id/verify
+```
+
+5. Link Hedera wallet
+
+```
+POST /wallets/link
+```
+
+6. Create task
+
+```
+POST /tasks/request
+```
+
+7. Simulate task
+
+```
+POST /tasks/:id/simulate
+```
+
+8. Pay for task
+
+```
+POST /tasks/:id/pay
+```
+
+9. Execute task
+
+```
+POST /tasks/:id/execute
+```
+
+10. View dashboard
+
+```
+GET /dashboard/overview
+```
+
+
+# Hackathon Use Case
+
+Agentity demonstrates **autonomous AI agents coordinating and settling payments using decentralized infrastructure**.
+
+Agents can:
+
+* advertise capabilities
+* simulate decisions
+* perform verifiable tasks
+* settle payments via Hedera
+* produce audit-grade execution logs
+
+This enables a **decentralized marketplace for autonomous AI services**.
+
+
+
+# Current Backend Scope
+
+The backend currently supports:
+
+* user authentication
+* agent identity registry
+* sandbox simulation
+* smart contract auditing
+* AI task coordination
+* Hedera microtransaction payments
+* CRE workflow execution
+* AWS KMS signing
+* blockchain traceability
+* dashboard analytics
