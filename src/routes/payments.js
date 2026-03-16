@@ -35,7 +35,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
         id: payment.id,
         toAgentId: payment.to_agent_id,
         taskExecutionId: payment.task_execution_id,
-        amountHbar: payment.amount_hbar,
+        amountHbar: Number(payment.amount_hbar),
         hederaTxId: payment.hedera_tx_id,
         paymentReference: payment.payment_reference,
         status: payment.status,
