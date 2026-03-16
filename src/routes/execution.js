@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
+
 const Agent = require("../models/agent");
+const { requireAuth } = require("../middleware/auth");
 const { simulateAgent } = require("../services/sandbox/sandboxService");
 const { executeWithCRE } = require("../services/cre/creService");
 const { logEvent } = require("../services/audit/logEvent");
@@ -22,6 +24,9 @@ const {
  *     tags: [Execution]
  *     summary: Execute a verified agent
  *     description: Runs sandbox simulation, CRE execution, and writes action log on-chain if blockchain_agent_id exists.
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -36,9 +41,14 @@ const {
  *       404:
  *         description: Agent not found
  */
-router.post("/:id", async (req, res, next) => {
+router.post("/:id", requireAuth, async (req, res, next) => {
   try {
-    const agent = await Agent.findByPk(req.params.id);
+    const agent = await Agent.findOne({
+      where: {
+        id: req.params.id,
+        creator_id: req.user.id,
+      },
+    });
 
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
