@@ -198,6 +198,9 @@ router.post("/run", requireAuth, async (req, res, next) => {
  *   post:
  *     tags: [Simulation]
  *     summary: Backward-compatible direct simulation by agent id
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -207,20 +210,35 @@ router.post("/run", requireAuth, async (req, res, next) => {
  *     responses:
  *       200:
  *         description: Simulation result
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Agent not found
  *       500:
  *         description: Simulation error
  */
-router.post("/:id", async (req, res, next) => {
+router.post("/:id", requireAuth, async (req, res, next) => {
   try {
-    const result = await simulateAgent(req.params.id);
+    const agent = await Agent.findOne({
+      where: {
+        id: req.params.id,
+        creator_id: req.user.id,
+      },
+    });
+
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    const result = await simulateAgent(agent.id);
 
     await logEvent(req, {
       action: "agent_simulate",
-      agentId: req.params.id,
+      agentId: agent.id,
       payload: result,
     });
 
-    res.json(result);
+    return res.json(result);
   } catch (error) {
     next(error);
   }
