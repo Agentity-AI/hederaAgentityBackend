@@ -41,7 +41,7 @@ const { logEvent } = require("../services/audit/logEvent");
  *               githubUrl:
  *                 type: string
  *     responses:
- *       200:
+ *       201:
  *         description: Audit completed
  *       400:
  *         description: Invalid input
@@ -50,40 +50,51 @@ const { logEvent } = require("../services/audit/logEvent");
  */
 router.post("/", requireAuth, async (req, res, next) => {
   try {
-    const { contractName, sourceType, sourceCode, githubUrl } = req.body || {};
+    const {
+      contractName,
+      sourceType,
+      sourceCode,
+      githubUrl,
+    } = req.body || {};
 
-    if (!contractName || !sourceType) {
+    const trimmedContractName = contractName?.trim();
+    const trimmedSourceCode = sourceCode?.trim();
+    const trimmedGithubUrl = githubUrl?.trim();
+    const normalizedSourceType =
+      typeof sourceType === "string" ? sourceType.toLowerCase().trim() : "";
+
+    if (!trimmedContractName || !normalizedSourceType) {
       return res
         .status(400)
         .json({ message: "contractName and sourceType are required" });
     }
 
-    if (!["paste", "github"].includes(sourceType)) {
+    if (!["paste", "github"].includes(normalizedSourceType)) {
       return res
         .status(400)
         .json({ message: "sourceType must be 'paste' or 'github'" });
     }
 
-    if (sourceType === "paste" && !sourceCode) {
+    if (normalizedSourceType === "paste" && !trimmedSourceCode) {
       return res
         .status(400)
         .json({ message: "sourceCode is required for paste audits" });
     }
 
-    if (sourceType === "github" && !githubUrl) {
+    if (normalizedSourceType === "github" && !trimmedGithubUrl) {
       return res
         .status(400)
         .json({ message: "githubUrl is required for github audits" });
     }
 
-    const analysis = analyzeSourceCode(sourceCode || "", contractName);
+    const analysis = analyzeSourceCode(trimmedSourceCode || "", trimmedContractName);
 
     const audit = await SmartContractAudit.create({
       user_id: req.user.id,
-      contract_name: contractName,
-      source_type: sourceType,
-      source_code: sourceCode || null,
-      github_url: githubUrl || null,
+      contract_name: trimmedContractName,
+      source_type: normalizedSourceType,
+      source_code: trimmedSourceCode || null,
+      github_url: trimmedGithubUrl || null,
       risk_level: analysis.riskLevel,
       consensus_score: analysis.consensusScore,
       status: "completed",
@@ -96,13 +107,13 @@ router.post("/", requireAuth, async (req, res, next) => {
       action: "contract_audit_create",
       payload: {
         auditId: audit.id,
-        contractName,
-        sourceType,
+        contractName: trimmedContractName,
+        sourceType: normalizedSourceType,
         riskLevel: audit.risk_level,
       },
     });
 
-    return res.json({
+    return res.status(201).json({
       id: audit.id,
       contractName: audit.contract_name,
       riskLevel: audit.risk_level,
