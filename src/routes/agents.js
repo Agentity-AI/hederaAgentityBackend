@@ -6,23 +6,22 @@ const Agent = require("../models/agent");
 const AgentMetadata = require("../models/agentMetadata");
 const AgentReputation = require("../models/agentReputation");
 const AgentBehaviorLog = require("../models/agentBehaviorLog");
+const AgentHcsRegistry = require("../models/agentHcsRegistry");
 
 const { requireAuth } = require("../middleware/auth");
 const { generateFingerprint } = require("../services/fingerprint");
 const { logEvent } = require("../services/audit/logEvent");
-
-// ── NEW: Hedera services ───────────────────────────────────
 const {
   ensureAgentRegistered,
   runImmediateVerification,
+  getAgentHistory,
 } = require("../services/hedera/hcsRegistryService");
 const {
   scheduleReverification,
 } = require("../services/hedera/hcsSchedulerService");
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
+const {
+  linkWalletToAgent,
+} = require("../services/hedera/walletLinkService");
 
 function parseJsonMaybe(value) {
   if (value == null) return null;
@@ -54,8 +53,9 @@ function normalizeRegisterPayload(body) {
     body.executionEnvironment ||
     (api_endpoint ? "api" : "unknown");
   const metadata_json = parseJsonMaybe(
-    body.metadata || body.metadata_json || body.metadataJson,
+    body.metadata || body.metadata_json || body.metadataJson
   );
+
   return {
     agent_name,
     public_key,
@@ -69,9 +69,49 @@ function normalizeRegisterPayload(body) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ROUTES
-// ─────────────────────────────────────────────────────────────────────────────
+function formatAgentResponse(agent) {
+  const data = typeof agent.toJSON === "function" ? agent.toJSON() : agent;
+
+  return {
+    id: data.id,
+    creatorId: data.creator_id,
+    agentName: data.agent_name,
+    publicKey: data.public_key,
+    fingerprint: data.fingerprint,
+    status: data.status,
+    agentType: data.metadata?.model_name || null,
+    description: data.description || null,
+    apiEndpoint: data.api_endpoint || null,
+    metadata: data.metadata
+      ? {
+          modelName: data.metadata.model_name,
+          version: data.metadata.version,
+          executionEnvironment: data.metadata.execution_environment,
+        }
+      : null,
+    reputation: data.reputation
+      ? {
+          score: data.reputation.score,
+          riskLevel: data.reputation.risk_level,
+        }
+      : null,
+    hcs: data.hcsRegistry
+      ? {
+          topicId: data.hcsRegistry.hcs_topic_id,
+          currentScore: data.hcsRegistry.current_score,
+          currentRiskLevel: data.hcsRegistry.current_risk_level,
+          verificationCount: data.hcsRegistry.verification_count,
+          lastVerifiedAt: data.hcsRegistry.last_verified_at,
+          nextScheduledAt: data.hcsRegistry.next_scheduled_at,
+          status: data.hcsRegistry.status,
+          hashscanUrl: `https://hashscan.io/${
+            process.env.HEDERA_NETWORK || "testnet"
+          }/topic/${data.hcsRegistry.hcs_topic_id}`,
+        }
+      : null,
+    createdAt: data.createdAt,
+  };
+}
 
 /**
  * @openapi
@@ -82,23 +122,6 @@ function normalizeRegisterPayload(body) {
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [agentName, walletAddress]
- *             properties:
- *               agentName:     { type: string }
- *               walletAddress: { type: string }
- *               description:   { type: string }
- *               agentType:     { type: string }
- *               apiEndpoint:   { type: string }
- *               metadata:      { type: string }
- *     responses:
- *       201: { description: Agent created }
- *       409: { description: Agent already exists }
  */
 router.post("/register", requireAuth, async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -117,6 +140,7 @@ router.post("/register", requireAuth, async (req, res) => {
       where: { public_key: p.public_key },
       transaction,
     });
+
     if (existing) {
       await transaction.rollback();
       return res
@@ -133,7 +157,7 @@ router.post("/register", requireAuth, async (req, res) => {
         public_key: p.public_key,
         fingerprint,
       },
-      { transaction },
+      { transaction }
     );
 
     await AgentMetadata.create(
@@ -143,12 +167,16 @@ router.post("/register", requireAuth, async (req, res) => {
         version: p.version,
         execution_environment: p.execution_environment,
       },
-      { transaction },
+      { transaction }
     );
 
     await AgentReputation.create(
-      { agent_id: agent.id, score: 0.0, risk_level: "low" },
-      { transaction },
+      {
+        agent_id: agent.id,
+        score: 0.0,
+        risk_level: "low",
+      },
+      { transaction }
     );
 
     await AgentBehaviorLog.create(
@@ -165,7 +193,7 @@ router.post("/register", requireAuth, async (req, res) => {
         },
         risk_score: 0.0,
       },
-      { transaction },
+      { transaction }
     );
 
     await logEvent(req, {
@@ -184,16 +212,12 @@ router.post("/register", requireAuth, async (req, res) => {
 
     return res.status(201).json({
       id: agent.id,
-      creator_id: agent.creator_id,
-      agent_name: agent.agent_name,
+      creatorId: agent.creator_id,
+      agentName: agent.agent_name,
+      publicKey: agent.public_key,
       fingerprint: agent.fingerprint,
-      public_key: agent.public_key,
       status: agent.status,
-      description: p.description,
       agentType: p.agent_type,
-      walletAddress: p.public_key,
-      apiEndpoint: p.api_endpoint,
-      metadata: p.metadata_json,
       createdAt: agent.createdAt,
     });
   } catch (error) {
@@ -212,8 +236,6 @@ router.post("/register", requireAuth, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
- *     responses:
- *       200: { description: List of current user's agents }
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
@@ -222,17 +244,14 @@ router.get("/my", requireAuth, async (req, res) => {
       include: [
         { model: AgentMetadata, as: "metadata" },
         { model: AgentReputation, as: "reputation" },
+        { model: AgentHcsRegistry, as: "hcsRegistry" },
       ],
       order: [["createdAt", "DESC"]],
     });
 
     return res.json({
-      userId: req.user.id,
       total: agents.length,
-      agents: agents.map((agent) => ({
-        ...agent.toJSON(),
-        agentType: agent.metadata?.model_name || null,
-      })),
+      items: agents.map(formatAgentResponse),
     });
   } catch (error) {
     console.error(error);
@@ -245,15 +264,13 @@ router.get("/my", requireAuth, async (req, res) => {
  * /agents/{id}:
  *   get:
  *     tags: [Agents]
- *     summary: Get agent by id (includes HCS registry info if available)
+ *     summary: Get agent by id
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
  */
 router.get("/:id", requireAuth, async (req, res) => {
   try {
-    const AgentHcsRegistry = require("../models/agentHcsRegistry");
-
     const agent = await Agent.findOne({
       where: {
         id: req.params.id,
@@ -275,7 +292,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       agentId: agent.id,
     });
 
-    return res.json(agent);
+    return res.json(formatAgentResponse(agent));
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -287,32 +304,23 @@ router.get("/:id", requireAuth, async (req, res) => {
  * /agents/{id}/verify:
  *   post:
  *     tags: [Agents]
- *     summary: Verify agent — triggers immediate HCS verification + hourly auto-reverification
- *     description: |
- *       On first call:
- *         1. Creates a Hedera HCS topic for the agent (permanent on-chain identity)
- *         2. Submits AGENT_REGISTERED message to HCS
- *         3. Calculates trust score from simulation history
- *         4. Submits VERIFIED message to HCS (immediate — user clicked verify)
- *         5. Creates first Hedera scheduled transaction (fires in 1hr)
- *         6. Sets agent status to "verified"
- *
- *       On subsequent calls:
- *         - Re-runs verification with latest data
- *         - Resets the schedule chain
- *
+ *     summary: Verify agent and sync with Hedera
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200: { description: Verified — returns score + HCS topic + schedule info }
- *       404: { description: Agent not found }
- *       500: { description: Server error }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               hederaAccountId:
+ *                 type: string
+ *               hederaPublicKey:
+ *                 type: string
+ *               kmsKeyId:
+ *                 type: string
  */
 router.post("/:id/verify", requireAuth, async (req, res) => {
   try {
@@ -327,35 +335,60 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Agent not found" });
     }
 
+    const { hederaAccountId, hederaPublicKey, kmsKeyId } = req.body || {};
+
+    if (hederaAccountId && hederaPublicKey) {
+      await linkWalletToAgent({
+        agentId: agent.id,
+        hederaAccountId,
+        hederaPublicKey,
+        kmsKeyId,
+      });
+    }
+
     agent.status = "verified";
     await agent.save();
 
-    let hcsResult = null;
-    let scheduleId = null;
-    let nextCheckAt = null;
-    let hcsError = null;
+    let hederaSyncStatus = "disabled";
+    let hedera = null;
 
     try {
       const registry = await ensureAgentRegistered(agent);
-
-      hcsResult = await runImmediateVerification(agent, registry);
+      const hcsResult = await runImmediateVerification(agent, registry);
 
       const intervalSeconds = parseInt(
         process.env.HEDERA_REVERIFY_INTERVAL_SECONDS || "3600",
-        10,
+        10
       );
 
-      scheduleId = await scheduleReverification(
+      const scheduleId = await scheduleReverification(
         registry.hcs_topic_id,
         agent.id,
-        intervalSeconds,
+        intervalSeconds
       );
 
-      nextCheckAt = new Date(
-        Date.now() + intervalSeconds * 1000,
+      const nextCheckAt = new Date(
+        Date.now() + intervalSeconds * 1000
       ).toISOString();
+
+      hederaSyncStatus = "synced";
+      hedera = {
+        topicId: hcsResult.topicId,
+        sequenceNumber: hcsResult.sequenceNumber,
+        trustScore: hcsResult.score,
+        isHealthy: hcsResult.isHealthy,
+        riskLevel: hcsResult.riskLevel,
+        verificationCount: hcsResult.verificationCount,
+        scheduleId,
+        nextCheckAt,
+        hashscanUrl: hcsResult.hashscanUrl,
+      };
     } catch (hcsErr) {
-      hcsError = hcsErr.message;
+      hederaSyncStatus = "failed";
+      hedera = {
+        error: hcsErr.message,
+        note: "Agent verification succeeded locally, but Hedera sync failed.",
+      };
       console.error("[verify] HCS error (non-fatal):", hcsErr.message);
     }
 
@@ -364,37 +397,30 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
       event_type: "verification",
       event_payload: {
         verified_at: new Date(),
-        hcs_topic_id: hcsResult?.topicId ?? null,
-        trust_score: hcsResult?.score ?? null,
-        schedule_id: scheduleId ?? null,
+        hedera_sync_status: hederaSyncStatus,
+        hedera,
       },
       risk_score: 0.0,
     });
 
-    await logEvent(req, { action: "agent_verify", agentId: agent.id });
+    await logEvent(req, {
+      action: "agent_verify",
+      agentId: agent.id,
+      payload: {
+        hederaSyncStatus,
+      },
+    });
 
     return res.json({
-      message: "Agent verified",
+      success: true,
+      message: "Agent verified successfully",
+      verificationStatus: "verified",
+      hederaSyncStatus,
       agent: {
         id: agent.id,
         status: agent.status,
       },
-      hedera: hcsResult
-        ? {
-            topicId: hcsResult.topicId,
-            sequenceNumber: hcsResult.sequenceNumber,
-            trustScore: hcsResult.score,
-            isHealthy: hcsResult.isHealthy,
-            riskLevel: hcsResult.riskLevel,
-            verificationCount: hcsResult.verificationCount,
-            scheduleId,
-            nextCheckAt,
-            hashscanUrl: hcsResult.hashscanUrl,
-          }
-        : {
-            error: hcsError || "Hedera not configured",
-            note: "Set HEDERA_OPERATOR_ID and HEDERA_OPERATOR_KEY in .env to enable on-chain verification",
-          },
+      hedera,
     });
   } catch (error) {
     console.error("[verify] Fatal error:", error);
@@ -407,26 +433,13 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
  * /agents/{id}/hcs-history:
  *   get:
  *     tags: [Agents]
- *     summary: Get full HCS topic history for an agent (from Hedera Mirror Node)
+ *     summary: Get Hedera HCS history for an agent
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200: { description: Full HCS message history }
- *       404: { description: Agent not found or not yet registered on HCS }
  */
 router.get("/:id/hcs-history", requireAuth, async (req, res) => {
   try {
-    const AgentHcsRegistry = require("../models/agentHcsRegistry");
-    const {
-      getAgentHistory,
-    } = require("../services/hedera/hcsRegistryService");
-
     const agent = await Agent.findOne({
       where: {
         id: req.params.id,
@@ -458,7 +471,12 @@ router.get("/:id/hcs-history", requireAuth, async (req, res) => {
         process.env.HEDERA_NETWORK || "testnet"
       }/topic/${registry.hcs_topic_id}`,
       messageCount: history.length,
-      messages: history,
+      items: history.map((item) => ({
+        sequenceNumber: item.sequenceNumber,
+        consensusTimestamp: item.consensusTimestamp,
+        type: item.content?.type || null,
+        payload: item.content || {},
+      })),
     });
   } catch (error) {
     console.error(error);
