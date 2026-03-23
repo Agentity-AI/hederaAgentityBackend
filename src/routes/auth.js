@@ -5,7 +5,7 @@ const { supabaseAdmin, supabaseAuth } = require("../config/supabase");
 const { buildDashboard } = require("../services/dashboard/buildDashboard");
 
 function badRequest(res, message) {
-  return res.status(400).json({ message });
+  return res.status(400).json({ success: false, message });
 }
 
 function setAuthCookie(res, jwt) {
@@ -32,7 +32,8 @@ function setAuthCookie(res, jwt) {
  * /auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: Register user (sets cookie + returns dashboard DTO)
+ *     summary: Register user
+ *     description: Creates a user, signs them in, sets the agentity_jwt cookie, and returns the dashboard payload.
  *     requestBody:
  *       required: true
  *       content:
@@ -52,7 +53,27 @@ function setAuthCookie(res, jwt) {
  *                 example: "John Doe"
  *     responses:
  *       201:
- *         description: Created
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 email:
+ *                   type: string
+ *                   example: "user@mail.com"
+ *                 name:
+ *                   type: string
+ *                   example: "John Doe"
+ *                 jwt:
+ *                   type: string
+ *                   example: "eyJhbGciOi..."
+ *                 dashboard:
+ *                   type: object
+ *                   additionalProperties: true
  *       400:
  *         description: Bad request
  *       401:
@@ -64,7 +85,8 @@ function setAuthCookie(res, jwt) {
  * /auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Login user (sets cookie + returns dashboard DTO)
+ *     summary: Login user
+ *     description: Signs in the user, sets the agentity_jwt cookie, and returns the dashboard payload.
  *     requestBody:
  *       required: true
  *       content:
@@ -81,7 +103,27 @@ function setAuthCookie(res, jwt) {
  *                 example: "Password123!"
  *     responses:
  *       200:
- *         description: OK
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 email:
+ *                   type: string
+ *                   example: "user@mail.com"
+ *                 name:
+ *                   type: string
+ *                   example: "John Doe"
+ *                 jwt:
+ *                   type: string
+ *                   example: "eyJhbGciOi..."
+ *                 dashboard:
+ *                   type: object
+ *                   additionalProperties: true
  *       400:
  *         description: Bad request
  *       401:
@@ -103,6 +145,9 @@ function setAuthCookie(res, jwt) {
  *             schema:
  *               type: object
  *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
  *                 ok:
  *                   type: boolean
  *                   example: true
@@ -114,6 +159,7 @@ function setAuthCookie(res, jwt) {
 router.post("/register", async (req, res, next) => {
   try {
     const { email, password, name } = req.body || {};
+
     if (!email || !password || !name) {
       return badRequest(res, "email, password, and name are required");
     }
@@ -133,7 +179,7 @@ router.post("/register", async (req, res, next) => {
         msg.includes("exists");
 
       if (!already) {
-        return res.status(400).json({ message: createErr.message });
+        return res.status(400).json({ success: false, message: createErr.message });
       }
     }
 
@@ -141,16 +187,17 @@ router.post("/register", async (req, res, next) => {
       await supabaseAuth.auth.signInWithPassword({ email, password });
 
     if (signInErr) {
-      return res.status(401).json({ message: signInErr.message });
+      return res.status(401).json({ success: false, message: signInErr.message });
     }
 
     const jwt = signedIn?.session?.access_token;
     const user = signedIn?.user;
 
     if (!jwt || !user) {
-      return res
-        .status(500)
-        .json({ message: "Failed to create session token" });
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create session token",
+      });
     }
 
     setAuthCookie(res, jwt);
@@ -158,19 +205,21 @@ router.post("/register", async (req, res, next) => {
     const dashboard = await buildDashboard(user);
 
     return res.status(201).json({
+      success: true,
       email: user.email,
       name: user?.user_metadata?.name || name,
       jwt,
       dashboard,
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
 router.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
+
     if (!email || !password) {
       return badRequest(res, "email and password are required");
     }
@@ -181,16 +230,17 @@ router.post("/login", async (req, res, next) => {
     });
 
     if (error) {
-      return res.status(401).json({ message: error.message });
+      return res.status(401).json({ success: false, message: error.message });
     }
 
     const jwt = data.session?.access_token;
     const user = data.user;
 
     if (!jwt || !user) {
-      return res
-        .status(500)
-        .json({ message: "Failed to create session token" });
+      return res.status(500).json({
+        success: false,
+        message: "Failed to create session token",
+      });
     }
 
     setAuthCookie(res, jwt);
@@ -201,13 +251,14 @@ router.post("/login", async (req, res, next) => {
     const dashboard = await buildDashboard(user);
 
     return res.json({
+      success: true,
       email: user.email,
       name,
       jwt,
       dashboard,
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
@@ -222,6 +273,7 @@ router.post("/logout", async (req, res) => {
   });
 
   return res.json({
+    success: true,
     ok: true,
     message: "Signed out successfully",
   });
