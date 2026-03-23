@@ -231,9 +231,114 @@ router.post("/register", requireAuth, async (req, res) => {
  *   get:
  *     tags: [Agents]
  *     summary: Get agents registered by the authenticated user
+ *     description: Returns the current user's agents in a frontend-friendly normalized shape.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: List of current user's agents
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   example: 1
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                       creatorId:
+ *                         type: string
+ *                         example: "e88a0b64-5cf9-4c13-b095-f5667c2745ff"
+ *                       agentName:
+ *                         type: string
+ *                         example: "Treasury Risk Monitor"
+ *                       publicKey:
+ *                         type: string
+ *                         example: "0x9f3C2B4d7A8e5F1b2C3D4E5F6A7B8C9D0E1F2A3B"
+ *                       fingerprint:
+ *                         type: string
+ *                         example: "b9e3f7d1a2c4"
+ *                       status:
+ *                         type: string
+ *                         example: "verified"
+ *                       agentType:
+ *                         type: string
+ *                         example: "Risk Monitoring Agent"
+ *                       description:
+ *                         nullable: true
+ *                         type: string
+ *                         example: null
+ *                       apiEndpoint:
+ *                         nullable: true
+ *                         type: string
+ *                         example: null
+ *                       metadata:
+ *                         nullable: true
+ *                         type: object
+ *                         properties:
+ *                           modelName:
+ *                             type: string
+ *                             example: "Risk Monitoring Agent"
+ *                           version:
+ *                             type: string
+ *                             example: "1.0.0"
+ *                           executionEnvironment:
+ *                             type: string
+ *                             example: "api"
+ *                       reputation:
+ *                         nullable: true
+ *                         type: object
+ *                         properties:
+ *                           score:
+ *                             type: number
+ *                             example: 75
+ *                           riskLevel:
+ *                             type: string
+ *                             example: "low"
+ *                       hcs:
+ *                         nullable: true
+ *                         type: object
+ *                         properties:
+ *                           topicId:
+ *                             type: string
+ *                             example: "0.0.7149999"
+ *                           currentScore:
+ *                             type: integer
+ *                             example: 75
+ *                           currentRiskLevel:
+ *                             type: string
+ *                             example: "low"
+ *                           verificationCount:
+ *                             type: integer
+ *                             example: 1
+ *                           lastVerifiedAt:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2026-03-16T15:26:29.803Z"
+ *                           nextScheduledAt:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2026-03-16T16:28:29.803Z"
+ *                           status:
+ *                             type: string
+ *                             example: "verified"
+ *                           hashscanUrl:
+ *                             type: string
+ *                             example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2026-03-16T15:00:00.000Z"
+ *       401:
+ *         description: Unauthorized
  */
 router.get("/my", requireAuth, async (req, res) => {
   try {
@@ -262,10 +367,116 @@ router.get("/my", requireAuth, async (req, res) => {
  * /agents/{id}:
  *   get:
  *     tags: [Agents]
- *     summary: Get agent by id
+ *     summary: Get a single agent owned by the authenticated user
+ *     description: Returns one normalized agent object including metadata, reputation, and HCS registry details when available.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Agent UUID
+ *     responses:
+ *       200:
+ *         description: Agent details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 creatorId:
+ *                   type: string
+ *                   example: "e88a0b64-5cf9-4c13-b095-f5667c2745ff"
+ *                 agentName:
+ *                   type: string
+ *                   example: "Treasury Risk Monitor"
+ *                 publicKey:
+ *                   type: string
+ *                   example: "0x9f3C2B4d7A8e5F1b2C3D4E5F6A7B8C9D0E1F2A3B"
+ *                 fingerprint:
+ *                   type: string
+ *                   example: "b9e3f7d1a2c4"
+ *                 status:
+ *                   type: string
+ *                   example: "verified"
+ *                 agentType:
+ *                   type: string
+ *                   example: "Risk Monitoring Agent"
+ *                 description:
+ *                   nullable: true
+ *                   type: string
+ *                   example: null
+ *                 apiEndpoint:
+ *                   nullable: true
+ *                   type: string
+ *                   example: null
+ *                 metadata:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     modelName:
+ *                       type: string
+ *                       example: "Risk Monitoring Agent"
+ *                     version:
+ *                       type: string
+ *                       example: "1.0.0"
+ *                     executionEnvironment:
+ *                       type: string
+ *                       example: "api"
+ *                 reputation:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     score:
+ *                       type: number
+ *                       example: 75
+ *                     riskLevel:
+ *                       type: string
+ *                       example: "low"
+ *                 hcs:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     topicId:
+ *                       type: string
+ *                       example: "0.0.7149999"
+ *                     currentScore:
+ *                       type: integer
+ *                       example: 75
+ *                     currentRiskLevel:
+ *                       type: string
+ *                       example: "low"
+ *                     verificationCount:
+ *                       type: integer
+ *                       example: 1
+ *                     lastVerifiedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2026-03-16T15:26:29.803Z"
+ *                     nextScheduledAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2026-03-16T16:28:29.803Z"
+ *                     status:
+ *                       type: string
+ *                       example: "verified"
+ *                     hashscanUrl:
+ *                       type: string
+ *                       example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2026-03-16T15:00:00.000Z"
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Agent not found
  */
 router.get("/:id", requireAuth, async (req, res) => {
   try {
@@ -523,9 +734,63 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
  *   get:
  *     tags: [Agents]
  *     summary: Get Hedera HCS history for an agent
+ *     description: Returns normalized Hedera topic history for the authenticated user's agent.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Agent UUID
+ *     responses:
+ *       200:
+ *         description: Hedera HCS history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 agentId:
+ *                   type: string
+ *                   example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 topicId:
+ *                   type: string
+ *                   example: "0.0.7149999"
+ *                 hashscanUrl:
+ *                   type: string
+ *                   example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                 messageCount:
+ *                   type: integer
+ *                   example: 2
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       sequenceNumber:
+ *                         type: integer
+ *                         example: 1
+ *                       consensusTimestamp:
+ *                         type: string
+ *                         example: "1710601234.123456789"
+ *                       type:
+ *                         nullable: true
+ *                         type: string
+ *                         example: "AGENT_REGISTERED"
+ *                       payload:
+ *                         type: object
+ *                         additionalProperties: true
+ *                         example:
+ *                           type: "AGENT_REGISTERED"
+ *                           agentId: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                           agentName: "Treasury Risk Monitor"
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Agent not found or not yet registered on HCS
  */
 router.get("/:id/hcs-history", requireAuth, async (req, res) => {
   try {
