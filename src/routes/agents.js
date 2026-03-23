@@ -19,9 +19,7 @@ const {
 const {
   scheduleReverification,
 } = require("../services/hedera/hcsSchedulerService");
-const {
-  linkWalletToAgent,
-} = require("../services/hedera/walletLinkService");
+const { linkWalletToAgent } = require("../services/hedera/walletLinkService");
 
 function parseJsonMaybe(value) {
   if (value == null) return null;
@@ -53,7 +51,7 @@ function normalizeRegisterPayload(body) {
     body.executionEnvironment ||
     (api_endpoint ? "api" : "unknown");
   const metadata_json = parseJsonMaybe(
-    body.metadata || body.metadata_json || body.metadataJson
+    body.metadata || body.metadata_json || body.metadataJson,
   );
 
   return {
@@ -157,7 +155,7 @@ router.post("/register", requireAuth, async (req, res) => {
         public_key: p.public_key,
         fingerprint,
       },
-      { transaction }
+      { transaction },
     );
 
     await AgentMetadata.create(
@@ -167,7 +165,7 @@ router.post("/register", requireAuth, async (req, res) => {
         version: p.version,
         execution_environment: p.execution_environment,
       },
-      { transaction }
+      { transaction },
     );
 
     await AgentReputation.create(
@@ -176,7 +174,7 @@ router.post("/register", requireAuth, async (req, res) => {
         score: 0.0,
         risk_level: "low",
       },
-      { transaction }
+      { transaction },
     );
 
     await AgentBehaviorLog.create(
@@ -193,7 +191,7 @@ router.post("/register", requireAuth, async (req, res) => {
         },
         risk_score: 0.0,
       },
-      { transaction }
+      { transaction },
     );
 
     await logEvent(req, {
@@ -304,10 +302,24 @@ router.get("/:id", requireAuth, async (req, res) => {
  * /agents/{id}/verify:
  *   post:
  *     tags: [Agents]
- *     summary: Verify agent and sync with Hedera
+ *     summary: Verify agent and optionally link Hedera wallet details
+ *     description: |
+ *       Verifies the agent locally first.
+ *       Then attempts Hedera sync:
+ *       - If Hedera succeeds, hederaSyncStatus = "synced"
+ *       - If Hedera is not configured or fails, local verification still succeeds and hederaSyncStatus = "failed" or "disabled"
+ *
+ *       Frontend can optionally send Hedera wallet details here instead of calling a separate wallet endpoint.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Agent UUID
  *     requestBody:
  *       required: false
  *       content:
@@ -317,10 +329,87 @@ router.get("/:id", requireAuth, async (req, res) => {
  *             properties:
  *               hederaAccountId:
  *                 type: string
+ *                 example: "0.0.7148109"
  *               hederaPublicKey:
  *                 type: string
+ *                 example: "302a300506032b6570032100examplepublickey"
  *               kmsKeyId:
  *                 type: string
+ *                 example: "demo-kms-key"
+ *     responses:
+ *       200:
+ *         description: Agent verified successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Agent verified successfully"
+ *                 verificationStatus:
+ *                   type: string
+ *                   example: "verified"
+ *                 hederaSyncStatus:
+ *                   type: string
+ *                   enum: [synced, failed, disabled]
+ *                   example: "synced"
+ *                 agent:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                     status:
+ *                       type: string
+ *                       example: "verified"
+ *                 hedera:
+ *                   nullable: true
+ *                   type: object
+ *                   properties:
+ *                     topicId:
+ *                       type: string
+ *                       example: "0.0.7149999"
+ *                     sequenceNumber:
+ *                       type: integer
+ *                       example: 2
+ *                     trustScore:
+ *                       type: integer
+ *                       example: 75
+ *                     isHealthy:
+ *                       type: boolean
+ *                       example: true
+ *                     riskLevel:
+ *                       type: string
+ *                       example: "low"
+ *                     verificationCount:
+ *                       type: integer
+ *                       example: 1
+ *                     scheduleId:
+ *                       type: string
+ *                       example: "0.0.7150001"
+ *                     nextCheckAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2026-03-16T16:28:29.803Z"
+ *                     hashscanUrl:
+ *                       type: string
+ *                       example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                     error:
+ *                       type: string
+ *                       example: "Agent verification succeeded locally, but Hedera sync failed."
+ *                     note:
+ *                       type: string
+ *                       example: "Agent verification succeeded locally, but Hedera sync failed."
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Agent not found
+ *       500:
+ *         description: Server error
  */
 router.post("/:id/verify", requireAuth, async (req, res) => {
   try {
@@ -358,17 +447,17 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
 
       const intervalSeconds = parseInt(
         process.env.HEDERA_REVERIFY_INTERVAL_SECONDS || "3600",
-        10
+        10,
       );
 
       const scheduleId = await scheduleReverification(
         registry.hcs_topic_id,
         agent.id,
-        intervalSeconds
+        intervalSeconds,
       );
 
       const nextCheckAt = new Date(
-        Date.now() + intervalSeconds * 1000
+        Date.now() + intervalSeconds * 1000,
       ).toISOString();
 
       hederaSyncStatus = "synced";
