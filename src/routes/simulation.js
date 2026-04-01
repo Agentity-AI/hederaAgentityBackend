@@ -6,6 +6,8 @@ const SimulationRun = require("../models/simulationRun");
 const { requireAuth } = require("../middleware/auth");
 const { simulateAgent } = require("../services/sandbox/sandboxService");
 const { logEvent } = require("../services/audit/logEvent");
+const { createAlert } = require("../services/alerts/alertService");
+const { buildSimulationAlert } = require("../services/alerts/alertUtils");
 
 const SCENARIOS = [
   "Token Swap",
@@ -166,7 +168,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
  */
 router.post("/run", requireAuth, async (req, res, next) => {
   try {
-    const { agentId, scenarioType } = req.body || {};
+    const { agentId, scenarioType, parameters } = req.body || {};
 
     if (!agentId || !scenarioType) {
       return res
@@ -207,15 +209,38 @@ router.post("/run", requireAuth, async (req, res, next) => {
       status: "completed",
       result_payload: {
         summary: "Simulation completed successfully",
+        parameters: parameters || {},
         sandbox: sandboxResult,
       },
     });
+
+    const alertPayload = buildSimulationAlert({
+      riskScore,
+      vulnerabilitiesCount,
+    });
+
+    if (alertPayload) {
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: run.id,
+        sourceType: "simulation_run",
+        metadata: {
+          scenarioType,
+          parameters: parameters || {},
+          riskScore,
+          vulnerabilitiesCount,
+        },
+        ...alertPayload,
+      });
+    }
 
     await logEvent(req, {
       action: "agent_simulate",
       agentId: agent.id,
       payload: {
         scenarioType,
+        parameters: parameters || {},
         riskScore,
         vulnerabilitiesCount,
       },
@@ -230,6 +255,7 @@ router.post("/run", requireAuth, async (req, res, next) => {
       vulnerabilities: vulnerabilitiesCount,
       status: run.status,
       createdAt: run.created_at,
+      parameters: parameters || {},
       result: run.result_payload,
     });
   } catch (error) {
@@ -264,6 +290,7 @@ router.post("/run", requireAuth, async (req, res, next) => {
  */
 router.post("/:id", requireAuth, async (req, res, next) => {
   try {
+    const { scenarioType = "Direct Simulation", parameters = {} } = req.body || {};
     const agent = await Agent.findOne({
       where: {
         id: req.params.id,
@@ -277,13 +304,42 @@ router.post("/:id", requireAuth, async (req, res, next) => {
 
     const result = await simulateAgent(agent.id);
 
+    const alertPayload = buildSimulationAlert({
+      riskScore:
+        typeof result?.riskScore === "number" ? result.riskScore : result?.risk_score || 0,
+      vulnerabilitiesCount: Array.isArray(result?.findings) ? result.findings.length : 0,
+    });
+
+    if (alertPayload) {
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: agent.id,
+        sourceType: "agent",
+        metadata: {
+          scenarioType,
+          parameters,
+          result,
+        },
+        ...alertPayload,
+      });
+    }
+
     await logEvent(req, {
       action: "agent_simulate",
       agentId: agent.id,
-      payload: result,
+      payload: {
+        scenarioType,
+        parameters,
+        result,
+      },
     });
 
-    return res.json(result);
+    return res.json({
+      ...result,
+      scenarioType,
+      parameters,
+    });
   } catch (error) {
     next(error);
   }

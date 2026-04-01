@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "test": "node --test",
     "sandbox:build": "docker build -t agentity-sandbox ./src/sandbox",
     "sandbox:run": "docker run --rm agentity-sandbox",
     "db:schema:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",

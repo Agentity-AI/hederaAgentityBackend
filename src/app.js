@@ -16,9 +16,13 @@ const dashboardRoutes = require("./routes/dashboard");
 const authRoutes = require("./routes/auth");
 const docsRoutes = require("./routes/docs");
 const auditsRoutes = require("./routes/audits");
-// const walletRoutes = require("./routes/wallets");
+const walletRoutes = require("./routes/wallets");
 const taskRoutes = require("./routes/tasks");
 const paymentRoutes = require("./routes/payments");
+const workflowRoutes = require("./routes/workflow");
+const alertRoutes = require("./routes/alerts");
+const transactionRoutes = require("./routes/transactions");
+const systemRoutes = require("./routes/system");
 
 const app = express();
 
@@ -90,9 +94,13 @@ app.use("/execute", executionRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/docs", docsRoutes);
 app.use("/audits", auditsRoutes);
-// app.use("/wallets", walletRoutes);
+app.use("/wallets", walletRoutes);
 app.use("/tasks", taskRoutes);
 app.use("/payments", paymentRoutes);
+app.use("/workflow", workflowRoutes);
+app.use("/alerts", alertRoutes);
+app.use("/transactions", transactionRoutes);
+app.use("/system", systemRoutes);
 
 /**
  * =============================

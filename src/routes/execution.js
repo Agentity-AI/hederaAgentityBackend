@@ -9,6 +9,8 @@ const { logEvent } = require("../services/audit/logEvent");
 const {
   logActionOnChain,
 } = require("../services/blockchain/agentRegistryService");
+const { createAlert } = require("../services/alerts/alertService");
+const { createTransactionRecord } = require("../services/transactions/transactionService");
 
 /**
  * @openapi
@@ -58,38 +60,76 @@ router.post("/:id", requireAuth, async (req, res, next) => {
       return res.status(400).json({ message: "Agent must be verified" });
     }
 
-    const simulationResult = await simulateAgent(agent.id);
-    const executionResult = await executeWithCRE(agent, simulationResult);
+    try {
+      const simulationResult = await simulateAgent(agent.id);
+      const executionResult = await executeWithCRE(agent, simulationResult);
 
-    let blockchainResult = null;
+      let blockchainResult = null;
 
-    if (agent.blockchain_agent_id) {
-      blockchainResult = await logActionOnChain({
-        blockchainAgentId: agent.blockchain_agent_id,
-        actionType: "execute_agent",
-        actionPayload: {
-          localAgentId: agent.id,
-          fingerprint: agent.fingerprint,
+      if (agent.blockchain_agent_id) {
+        blockchainResult = await logActionOnChain({
+          blockchainAgentId: agent.blockchain_agent_id,
+          actionType: "execute_agent",
+          actionPayload: {
+            localAgentId: agent.id,
+            fingerprint: agent.fingerprint,
+            simulation: simulationResult,
+            execution: executionResult,
+          },
+        });
+      }
+
+      await createTransactionRecord({
+        userId: req.user.id,
+        agentId: agent.id,
+        transactionType: "execution",
+        contractAddress: process.env.BLOCKCHAIN_REGISTRY_ADDRESS || null,
+        status: "completed",
+        riskRating:
+          simulationResult?.riskScore >= 70
+            ? "high"
+            : simulationResult?.riskScore >= 40
+              ? "medium"
+              : "low",
+        txHash: blockchainResult?.txHash || executionResult?.txHash || null,
+        validationSummary: {
+          blockchainLogged: Boolean(blockchainResult),
+        },
+        executionTrace: {
           simulation: simulationResult,
           execution: executionResult,
+          blockchain: blockchainResult,
         },
       });
+
+      await logEvent(req, {
+        action: "agent_execute",
+        agentId: agent.id,
+        payload: {
+          executionResult,
+          blockchainResult,
+        },
+      });
+
+      return res.json({
+        simulation: simulationResult,
+        execution: executionResult,
+        blockchain: blockchainResult,
+      });
+    } catch (executionError) {
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: agent.id,
+        sourceType: "agent",
+        title: "Agent execution failed",
+        severity: "critical",
+        type: "execution_failure",
+        message: executionError.message,
+      });
+
+      throw executionError;
     }
-
-    await logEvent(req, {
-      action: "agent_execute",
-      agentId: agent.id,
-      payload: {
-        executionResult,
-        blockchainResult,
-      },
-    });
-
-    return res.json({
-      simulation: simulationResult,
-      execution: executionResult,
-      blockchain: blockchainResult,
-    });
   } catch (error) {
     next(error);
   }

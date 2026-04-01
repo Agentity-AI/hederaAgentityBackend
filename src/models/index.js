@@ -11,6 +11,9 @@ const AgentWallet       = require("./agentWallet");
 const TaskExecution     = require("./taskExecution");
 const PaymentRecord     = require("./paymentRecord");
 const KmsAuditLog       = require("./kmsAuditLog");
+const Alert             = require("./alert");
+const TransactionRecord = require("./transactionRecord");
+const TransactionPolicy = require("./transactionPolicy");
 
 // ── NEW: Hedera HCS models ─────────────────────────────────
 const AgentHcsRegistry  = require("./agentHcsRegistry");
@@ -35,6 +38,12 @@ TaskExecution.belongsTo(Agent, { foreignKey: "agent_id", as: "agent"     });
 TaskExecution.belongsTo(PaymentRecord, { foreignKey: "payment_record_id", as: "payment" });
 PaymentRecord.hasOne(TaskExecution,    { foreignKey: "payment_record_id", as: "task"    });
 
+Agent.hasMany(Alert, { foreignKey: "agent_id", as: "alerts" });
+Alert.belongsTo(Agent, { foreignKey: "agent_id", as: "agent" });
+
+Agent.hasMany(TransactionRecord, { foreignKey: "agent_id", as: "transactions" });
+TransactionRecord.belongsTo(Agent, { foreignKey: "agent_id", as: "agent" });
+
 // ── NEW: Hedera associations ───────────────────────────────
 // One HCS registry entry per agent (topic ID + schedule state)
 Agent.hasOne(AgentHcsRegistry,  { foreignKey: "agent_id", as: "hcsRegistry" });
@@ -54,6 +63,9 @@ module.exports = {
   TaskExecution,
   PaymentRecord,
   KmsAuditLog,
+  Alert,
+  TransactionRecord,
+  TransactionPolicy,
   // NEW
   AgentHcsRegistry,
   AgentHcsMessage,

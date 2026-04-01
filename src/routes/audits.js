@@ -5,6 +5,7 @@ const { requireAuth } = require("../middleware/auth");
 const SmartContractAudit = require("../models/smartContractAudit");
 const { analyzeSourceCode } = require("../services/audit/contractAuditService");
 const { logEvent } = require("../services/audit/logEvent");
+const { createAlert } = require("../services/alerts/alertService");
 
 /**
  * @openapi
@@ -102,6 +103,23 @@ router.post("/", requireAuth, async (req, res, next) => {
       summary: analysis.summary,
       result_payload: analysis.resultPayload,
     });
+
+    if (["high", "critical"].includes(String(audit.risk_level).toLowerCase())) {
+      await createAlert({
+        userId: req.user.id,
+        title: "High-risk contract audit result",
+        severity: audit.risk_level === "critical" ? "critical" : "high",
+        type: "contract_audit",
+        sourceId: audit.id,
+        sourceType: "smart_contract_audit",
+        message: `Audit for ${trimmedContractName} returned ${audit.risk_level} risk.`,
+        metadata: {
+          contractName: trimmedContractName,
+          findings: audit.findings,
+          consensusScore: audit.consensus_score,
+        },
+      });
+    }
 
     await logEvent(req, {
       action: "contract_audit_create",

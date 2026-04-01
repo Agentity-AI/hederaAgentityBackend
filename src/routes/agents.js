@@ -20,6 +20,7 @@ const {
   scheduleReverification,
 } = require("../services/hedera/hcsSchedulerService");
 const { linkWalletToAgent } = require("../services/hedera/walletLinkService");
+const { createAlert } = require("../services/alerts/alertService");
 
 function parseJsonMaybe(value) {
   if (value == null) return null;
@@ -67,8 +68,9 @@ function normalizeRegisterPayload(body) {
   };
 }
 
-function formatAgentResponse(agent) {
+function formatAgentResponse(agent, options = {}) {
   const data = typeof agent.toJSON === "function" ? agent.toJSON() : agent;
+  const lastActivity = options.lastActivity || null;
 
   return {
     id: data.id,
@@ -107,7 +109,25 @@ function formatAgentResponse(agent) {
           }/topic/${data.hcsRegistry.hcs_topic_id}`,
         }
       : null,
+    lastActivityAt: lastActivity?.createdAt || null,
+    lastActivityType: lastActivity?.type || null,
     createdAt: data.createdAt,
+  };
+}
+
+async function getLatestAgentActivity(agentId) {
+  const item = await AgentBehaviorLog.findOne({
+    where: { agent_id: agentId },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!item) {
+    return null;
+  }
+
+  return {
+    type: item.event_type,
+    createdAt: item.createdAt,
   };
 }
 
@@ -352,9 +372,17 @@ router.get("/my", requireAuth, async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
+    const items = await Promise.all(
+      agents.map(async (agent) =>
+        formatAgentResponse(agent, {
+          lastActivity: await getLatestAgentActivity(agent.id),
+        }),
+      ),
+    );
+
     return res.json({
       total: agents.length,
-      items: agents.map(formatAgentResponse),
+      items,
     });
   } catch (error) {
     console.error(error);
@@ -501,7 +529,11 @@ router.get("/:id", requireAuth, async (req, res) => {
       agentId: agent.id,
     });
 
-    return res.json(formatAgentResponse(agent));
+    return res.json(
+      formatAgentResponse(agent, {
+        lastActivity: await getLatestAgentActivity(agent.id),
+      }),
+    );
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -689,6 +721,16 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
         error: hcsErr.message,
         note: "Agent verification succeeded locally, but Hedera sync failed.",
       };
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: agent.id,
+        sourceType: "agent",
+        title: "Hedera verification sync failed",
+        severity: "high",
+        type: "hedera_sync_failure",
+        message: hcsErr.message,
+      });
       console.error("[verify] HCS error (non-fatal):", hcsErr.message);
     }
 

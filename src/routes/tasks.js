@@ -15,6 +15,9 @@ const {
 const { signPayloadWithKms } = require("../services/aws/kmsService");
 const { executeWithCRE } = require("../services/cre/creService");
 const { logEvent } = require("../services/audit/logEvent");
+const { createAlert } = require("../services/alerts/alertService");
+const { buildSimulationAlert } = require("../services/alerts/alertUtils");
+const { createTransactionRecord } = require("../services/transactions/transactionService");
 
 /**
  * @openapi
@@ -168,9 +171,30 @@ router.post("/:id/simulate", requireAuth, async (req, res, next) => {
       simulation_run_id: simulation.id,
       status: "simulated",
       result_payload: {
+        parameters: task.input_payload || {},
         simulation: sandboxResult,
       },
     });
+
+    const alertPayload = buildSimulationAlert({
+      riskScore,
+      vulnerabilitiesCount,
+    });
+
+    if (alertPayload) {
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: simulation.id,
+        sourceType: "simulation_run",
+        metadata: {
+          taskId: task.id,
+          riskScore,
+          vulnerabilitiesCount,
+        },
+        ...alertPayload,
+      });
+    }
 
     await logEvent(req, {
       action: "task_simulate",
@@ -226,42 +250,84 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
-    const quote = await createPaymentQuote({
-      fromUserId: req.user.id,
-      toAgentId: task.agent_id,
-      taskExecutionId: task.id,
-      taskType: task.task_type,
-      metadata: {
-        taskId: task.id,
-      },
-    });
+    try {
+      const quote = await createPaymentQuote({
+        fromUserId: req.user.id,
+        toAgentId: task.agent_id,
+        taskExecutionId: task.id,
+        taskType: task.task_type,
+        metadata: {
+          taskId: task.id,
+        },
+      });
 
-    const result = await executeHederaPayment(quote);
+      const result = await executeHederaPayment(quote);
 
-    await task.update({
-      payment_record_id: result.payment.id,
-      status: "paid",
-    });
+      await task.update({
+        payment_record_id: result.payment.id,
+        status: "paid",
+      });
 
-    await logEvent(req, {
-      action: "task_pay",
-      agentId: task.agent_id,
-      payload: {
+      await createTransactionRecord({
+        userId: req.user.id,
+        agentId: task.agent_id,
+        taskExecutionId: task.id,
+        paymentRecordId: result.payment.id,
+        transactionType: "payment",
+        amount: result.payment.amount_hbar,
+        status: result.payment.status,
+        riskRating: result.simulated ? "medium" : "low",
+        txHash: result.txId,
+        validationSummary: {
+          paymentReference: result.payment.payment_reference,
+          simulated: result.simulated,
+        },
+        executionTrace: {
+          paymentRecordId: result.payment.id,
+          hederaTxId: result.txId,
+        },
+        metadata: {
+          taskType: task.task_type,
+        },
+      });
+
+      await logEvent(req, {
+        action: "task_pay",
+        agentId: task.agent_id,
+        payload: {
+          taskId: task.id,
+          paymentId: result.payment.id,
+          txId: result.txId,
+          simulated: result.simulated,
+        },
+      });
+
+      return res.json({
         taskId: task.id,
         paymentId: result.payment.id,
-        txId: result.txId,
+        amountHbar: Number(result.payment.amount_hbar),
+        hederaTxId: result.txId,
         simulated: result.simulated,
-      },
-    });
+        status: "paid",
+      });
+    } catch (paymentError) {
+      await createAlert({
+        userId: req.user.id,
+        agentId: task.agent_id,
+        sourceId: task.id,
+        sourceType: "task_execution",
+        title: "Task payment failed",
+        severity: "high",
+        type: "payment_failure",
+        message: paymentError.message,
+        metadata: {
+          taskId: task.id,
+          taskType: task.task_type,
+        },
+      });
 
-    return res.json({
-      taskId: task.id,
-      paymentId: result.payment.id,
-      amountHbar: Number(result.payment.amount_hbar),
-      hederaTxId: result.txId,
-      simulated: result.simulated,
-      status: "paid",
-    });
+      throw paymentError;
+    }
   } catch (error) {
     next(error);
   }
@@ -325,47 +391,92 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
       ? await SimulationRun.findByPk(task.simulation_run_id)
       : null;
 
-    const executionResult = await executeWithCRE(
-      agent,
-      simulationResult?.result_payload || {},
-    );
+    try {
+      const executionResult = await executeWithCRE(
+        agent,
+        simulationResult?.result_payload || {},
+      );
 
-    const kmsResult = await signPayloadWithKms({
-      userId: req.user.id,
-      agentId: agent.id,
-      kmsKeyId: wallet?.kms_key_id || null,
-      payload: {
+      const kmsResult = await signPayloadWithKms({
+        userId: req.user.id,
+        agentId: agent.id,
+        kmsKeyId: wallet?.kms_key_id || null,
+        payload: {
+          taskId: task.id,
+          agentId: agent.id,
+          executionResult,
+        },
+      });
+
+      await task.update({
+        status: "completed",
+        result_payload: {
+          ...(task.result_payload || {}),
+          execution: executionResult,
+          kms: kmsResult,
+        },
+      });
+
+      await createTransactionRecord({
+        userId: req.user.id,
+        agentId: agent.id,
+        taskExecutionId: task.id,
+        paymentRecordId: task.payment_record_id,
+        transactionType: "execution",
+        status: "completed",
+        riskRating:
+          simulationResult?.risk_score >= 70
+            ? "high"
+            : simulationResult?.risk_score >= 40
+              ? "medium"
+              : "low",
+        txHash: executionResult?.txHash || executionResult?.transactionHash || null,
+        validationSummary: {
+          kmsAuditId: kmsResult.auditId,
+          fallback: executionResult?.fallback || false,
+        },
+        executionTrace: executionResult,
+        metadata: {
+          taskType: task.task_type,
+        },
+      });
+
+      await logEvent(req, {
+        action: "task_execute",
+        agentId: agent.id,
+        payload: {
+          taskId: task.id,
+          kmsAuditId: kmsResult.auditId,
+        },
+      });
+
+      return res.json({
         taskId: task.id,
         agentId: agent.id,
-        executionResult,
-      },
-    });
-
-    await task.update({
-      status: "completed",
-      result_payload: {
-        ...(task.result_payload || {}),
+        status: "completed",
         execution: executionResult,
         kms: kmsResult,
-      },
-    });
+      });
+    } catch (executionError) {
+      await task.update({ status: "failed" });
 
-    await logEvent(req, {
-      action: "task_execute",
-      agentId: agent.id,
-      payload: {
-        taskId: task.id,
-        kmsAuditId: kmsResult.auditId,
-      },
-    });
+      await createAlert({
+        userId: req.user.id,
+        agentId: agent.id,
+        sourceId: task.id,
+        sourceType: "task_execution",
+        title: "Task execution failed",
+        severity: "critical",
+        type: "execution_failure",
+        message: executionError.message,
+        metadata: {
+          taskId: task.id,
+          taskType: task.task_type,
+        },
+      });
 
-    return res.json({
-      taskId: task.id,
-      agentId: agent.id,
-      status: "completed",
-      execution: executionResult,
-      kms: kmsResult,
-    });
+      throw executionError;
+    }
   } catch (error) {
     next(error);
   }

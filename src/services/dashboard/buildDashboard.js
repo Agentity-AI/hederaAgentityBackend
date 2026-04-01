@@ -1,6 +1,9 @@
-const { Op, fn, col } = require("sequelize");
+const { Op } = require("sequelize");
 const UserAgentEvent = require("../../models/userAgentEvent");
 const Agent = require("../../models/agent");
+const AgentReputation = require("../../models/agentReputation");
+const Alert = require("../../models/alert");
+const { maxSeverity, worstRiskLevel } = require("../alerts/alertUtils");
 
 function parseRiskScore(payload) {
   if (!payload) return null;
@@ -63,6 +66,8 @@ async function buildDashboard(user, options = {}) {
     totalVerifiedAgent,
     activeSimulation,
     transactionsExecuted,
+    reputations,
+    alerts,
     recentActivity,
     events7d,
     lastTouchedEvent,
@@ -88,6 +93,24 @@ async function buildDashboard(user, options = {}) {
         user_id: userId,
         action: "agent_execute",
       },
+    }),
+
+    AgentReputation.findAll({
+      include: [
+        {
+          model: Agent,
+          required: true,
+          attributes: [],
+          where: { creator_id: userId },
+        },
+      ],
+      order: [["updatedAt", "DESC"]],
+    }),
+
+    Alert.findAll({
+      where: { user_id: userId },
+      order: [["created_at", "DESC"]],
+      limit: 10,
     }),
 
     UserAgentEvent.findAll({
@@ -135,6 +158,14 @@ async function buildDashboard(user, options = {}) {
   const verificationSeries = Array(7).fill(0);
   const vulnerabilitySeries = Array(7).fill(0);
   let vulnerabilitiesDetected = 0;
+  const trustScores = reputations.map((reputation) => Number(reputation.score || 0));
+  const trustScore =
+    trustScores.length > 0
+      ? Number(
+          (trustScores.reduce((sum, value) => sum + value, 0) / trustScores.length).toFixed(2),
+        )
+      : 0;
+  const riskLevel = worstRiskLevel(reputations.map((reputation) => reputation.risk_level));
 
   for (const ev of events7d) {
     const idx = labels.indexOf(dateLabel(ev.created_at));
@@ -161,12 +192,24 @@ async function buildDashboard(user, options = {}) {
     activeSimulation,
     VulnerabilitiesDetected: vulnerabilitiesDetected,
     TransactionsExecuted: transactionsExecuted,
+    trustScore,
+    riskLevel,
+    alertSeverity: maxSeverity(alerts.map((alert) => alert.severity)),
     chart: {
       labels,
       Verification: verificationSeries,
       Vulnerability: vulnerabilitySeries,
     },
     activeAgent,
+    recentAlerts: alerts.map((alert) => ({
+      id: alert.id,
+      title: alert.title,
+      severity: alert.severity,
+      type: alert.type,
+      status: alert.status,
+      message: alert.message,
+      createdAt: alert.created_at,
+    })),
     RecentActivity: recentActivity.map((e) => ({
       id: e.id,
       action: e.action,
