@@ -11,7 +11,10 @@ const options = {
     },
     servers: [
       { url: "http://localhost:5000", description: "Local" },
-      { url: "https://agentity-backend.onrender.com", description: "Render" },
+      {
+        url: "https://hederaagentitybackend.onrender.com",
+        description: "Render",
+      },
     ],
     components: {
       securitySchemes: {

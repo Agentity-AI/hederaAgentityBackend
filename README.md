@@ -116,7 +116,7 @@ http://localhost:5000/docs
 Production:
 
 ```
-https://agentity-backend.onrender.com/docs
+https://hederaagentitybackend.onrender.com/docs
 ```
 
 Swagger allows direct API testing through **Try It Out**.
