@@ -14,6 +14,7 @@ const KmsAuditLog       = require("./kmsAuditLog");
 const Alert             = require("./alert");
 const TransactionRecord = require("./transactionRecord");
 const TransactionPolicy = require("./transactionPolicy");
+const UserApiKey = require("./userApiKey");
 
 // ── NEW: Hedera HCS models ─────────────────────────────────
 const AgentHcsRegistry  = require("./agentHcsRegistry");
@@ -66,6 +67,7 @@ module.exports = {
   Alert,
   TransactionRecord,
   TransactionPolicy,
+  UserApiKey,
   // NEW
   AgentHcsRegistry,
   AgentHcsMessage,

@@ -21,6 +21,23 @@ const {
 } = require("../services/hedera/hcsSchedulerService");
 const { linkWalletToAgent } = require("../services/hedera/walletLinkService");
 const { createAlert } = require("../services/alerts/alertService");
+const {
+  ValidationError,
+  optionalObject,
+  optionalString,
+  optionalUrl,
+  requireString,
+  requireUuid,
+} = require("../utils/validation");
+
+const AGENT_TYPES = [
+  "Governance Agent",
+  "DeFi Agent",
+  "NFT Agent",
+  "Trading Bot",
+  "Risk Monitoring Agent",
+  "Treasury Agent",
+];
 
 function parseJsonMaybe(value) {
   if (value == null) return null;
@@ -34,26 +51,45 @@ function parseJsonMaybe(value) {
 }
 
 function normalizeRegisterPayload(body) {
-  const agent_name = body.agent_name || body.agentName || body.name || null;
-  const description = body.description || null;
-  const agent_type = body.agent_type || body.agentType || null;
-  const public_key =
-    body.public_key ||
-    body.publicKey ||
-    body.wallet_address ||
-    body.walletAddress ||
-    null;
-  const api_endpoint = body.api_endpoint || body.apiEndpoint || null;
-  const model_name =
-    body.model_name || body.modelName || agent_type || "unknown";
-  const version = body.version || "unknown";
-  const execution_environment =
-    body.execution_environment ||
-    body.executionEnvironment ||
-    (api_endpoint ? "api" : "unknown");
-  const metadata_json = parseJsonMaybe(
+  const metadataValue = parseJsonMaybe(
     body.metadata || body.metadata_json || body.metadataJson,
   );
+  const agent_name = requireString(
+    body.agent_name || body.agentName || body.name,
+    "agentName",
+    { min: 2, max: 120 },
+  );
+  const description = optionalString(body.description, "description", {
+    max: 1000,
+  });
+  const agent_type = optionalString(body.agent_type || body.agentType, "agentType", {
+    max: 80,
+  });
+  const public_key = requireString(
+    body.public_key ||
+      body.publicKey ||
+      body.wallet_address ||
+      body.walletAddress,
+    "publicKey",
+    { min: 6, max: 255 },
+  );
+  const api_endpoint = optionalUrl(
+    body.api_endpoint || body.apiEndpoint,
+    "apiEndpoint",
+  );
+  const model_name = optionalString(body.model_name || body.modelName, "modelName", {
+    max: 120,
+  }) || agent_type || "unknown";
+  const version = optionalString(body.version, "version", {
+    max: 32,
+  }) || "unknown";
+  const execution_environment =
+    optionalString(
+      body.execution_environment || body.executionEnvironment,
+      "executionEnvironment",
+      { max: 80 },
+    ) || (api_endpoint ? "api" : "unknown");
+  const metadata_json = metadataValue == null ? null : optionalObject(metadataValue, "metadata");
 
   return {
     agent_name,
@@ -251,14 +287,6 @@ router.post("/register", requireAuth, async (req, res) => {
   try {
     const p = normalizeRegisterPayload(req.body || {});
 
-    if (!p.agent_name || !p.public_key) {
-      await transaction.rollback();
-      return res.status(400).json({
-        message:
-          "agent_name (or agentName) and public_key (or walletAddress) are required",
-      });
-    }
-
     const existing = await Agent.findOne({
       where: { public_key: p.public_key },
       transaction,
@@ -345,9 +373,42 @@ router.post("/register", requireAuth, async (req, res) => {
     });
   } catch (error) {
     await transaction.rollback();
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
+});
+
+/**
+ * @openapi
+ * /agents/types:
+ *   get:
+ *     tags: [Agents]
+ *     summary: Get supported agent types for registration forms
+ *     description: Returns the preset agent categories the frontend can show in registration dropdowns.
+ *     responses:
+ *       200:
+ *         description: Agent type list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example:
+ *                     - "Governance Agent"
+ *                     - "DeFi Agent"
+ *                     - "NFT Agent"
+ *                     - "Trading Bot"
+ */
+router.get("/types", (req, res) => {
+  return res.json({ items: AGENT_TYPES });
 });
 
 /**
@@ -458,6 +519,15 @@ router.post("/register", requireAuth, async (req, res) => {
  *                           hashscanUrl:
  *                             type: string
  *                             example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                       lastActivityAt:
+ *                         nullable: true
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2026-03-16T16:28:29.803Z"
+ *                       lastActivityType:
+ *                         nullable: true
+ *                         type: string
+ *                         example: "verification"
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -602,6 +672,15 @@ router.get("/my", requireAuth, async (req, res) => {
  *                     hashscanUrl:
  *                       type: string
  *                       example: "https://hashscan.io/testnet/topic/0.0.7149999"
+ *                 lastActivityAt:
+ *                   nullable: true
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2026-03-16T16:28:29.803Z"
+ *                 lastActivityType:
+ *                   nullable: true
+ *                   type: string
+ *                   example: "verification"
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -613,9 +692,10 @@ router.get("/my", requireAuth, async (req, res) => {
  */
 router.get("/:id", requireAuth, async (req, res) => {
   try {
+    const agentId = requireUuid(req.params.id, "id");
     const agent = await Agent.findOne({
       where: {
-        id: req.params.id,
+        id: agentId,
         creator_id: req.user.id,
       },
       include: [
@@ -640,6 +720,10 @@ router.get("/:id", requireAuth, async (req, res) => {
       }),
     );
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
@@ -763,9 +847,10 @@ router.get("/:id", requireAuth, async (req, res) => {
  */
 router.post("/:id/verify", requireAuth, async (req, res) => {
   try {
+    const agentId = requireUuid(req.params.id, "id");
     const agent = await Agent.findOne({
       where: {
-        id: req.params.id,
+        id: agentId,
         creator_id: req.user.id,
       },
     });
@@ -872,6 +957,10 @@ router.post("/:id/verify", requireAuth, async (req, res) => {
       hedera,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     console.error("[verify] Fatal error:", error);
     return res.status(500).json({ message: "Server error" });
   }

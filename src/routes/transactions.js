@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
+const Agent = require("../models/agent");
 const { requireAuth } = require("../middleware/auth");
 const {
   createPolicy,
@@ -9,6 +10,39 @@ const {
   listPoliciesForUser,
   listTransactionsForUser,
 } = require("../services/transactions/transactionService");
+const {
+  ValidationError,
+  optionalEnum,
+  optionalFiniteNumber,
+  optionalObject,
+  optionalString,
+  requireString,
+  requireUuid,
+} = require("../utils/validation");
+
+function formatPolicy(policy) {
+  const rules = policy.rules || {};
+
+  return {
+    id: policy.id,
+    name: policy.name,
+    description: policy.description,
+    status: policy.status,
+    rules,
+    agentId: rules.agentId || null,
+    maxTransactionAmount:
+      rules.maxTransactionAmount ?? rules.maxAmount ?? null,
+    dailyLimit: rules.dailyLimit ?? null,
+    requireManualApproval: Boolean(rules.requireManualApproval),
+    autoRejectHighRisk: Boolean(rules.autoRejectHighRisk),
+    policyEnabled:
+      typeof rules.policyEnabled === "boolean"
+        ? rules.policyEnabled
+        : policy.status === "active",
+    createdAt: policy.created_at,
+    updatedAt: policy.updated_at,
+  };
+}
 
 /**
  * @openapi
@@ -60,9 +94,16 @@ const {
  *                       transactionType:
  *                         type: string
  *                         example: "payment"
+ *                       displayType:
+ *                         type: string
+ *                         example: "Stake"
  *                       amount:
  *                         nullable: true
  *                         type: number
+ *                       amountUnit:
+ *                         nullable: true
+ *                         type: string
+ *                         example: "AVAX"
  *                       status:
  *                         type: string
  *                         example: "paid"
@@ -106,6 +147,38 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *     responses:
  *       200:
  *         description: Transaction policy list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   example: 3
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       agentId:
+ *                         nullable: true
+ *                         type: string
+ *                       maxTransactionAmount:
+ *                         nullable: true
+ *                         type: number
+ *                       dailyLimit:
+ *                         nullable: true
+ *                         type: number
+ *                       requireManualApproval:
+ *                         type: boolean
+ *                       autoRejectHighRisk:
+ *                         type: boolean
+ *                       policyEnabled:
+ *                         type: boolean
  *       401:
  *         description: Unauthorized
  */
@@ -115,15 +188,70 @@ router.get("/policies", requireAuth, async (req, res, next) => {
 
     return res.json({
       total: items.length,
-      items: items.map((policy) => ({
-        id: policy.id,
-        name: policy.name,
-        description: policy.description,
-        status: policy.status,
-        rules: policy.rules,
-        createdAt: policy.created_at,
-        updatedAt: policy.updated_at,
-      })),
+      items: items.map(formatPolicy),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /transactions/summary:
+ *   get:
+ *     tags: [Transactions]
+ *     summary: Get payment and transaction summary cards for the authenticated user
+ *     description: Returns aggregate counts and totals for the Payments & Transactions screen.
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Transaction summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalTransactions:
+ *                   type: integer
+ *                   example: 4
+ *                 totalVolume:
+ *                   type: number
+ *                   example: 16750.5
+ *                 highRisk:
+ *                   type: integer
+ *                   example: 0
+ *                 activePolicies:
+ *                   type: integer
+ *                   example: 3
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/summary", requireAuth, async (req, res, next) => {
+  try {
+    const [transactions, policies] = await Promise.all([
+      listTransactionsForUser(req.user.id),
+      listPoliciesForUser(req.user.id),
+    ]);
+
+    const totalVolume = transactions.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    );
+    const highRisk = transactions.filter(
+      (item) =>
+        ["high", "critical"].includes(String(item.risk_rating || "").toLowerCase()),
+    ).length;
+    const activePolicies = policies.filter(
+      (item) => item.status === "active",
+    ).length;
+
+    return res.json({
+      totalTransactions: transactions.length,
+      totalVolume: Number(totalVolume.toFixed(2)),
+      highRisk,
+      activePolicies,
     });
   } catch (error) {
     next(error);
@@ -156,6 +284,25 @@ router.get("/policies", requireAuth, async (req, res, next) => {
  *               description:
  *                 type: string
  *                 example: "Policy used for standard payment and execution validation."
+ *               agentId:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *               maxTransactionAmount:
+ *                 type: number
+ *                 example: 1000
+ *               dailyLimit:
+ *                 type: number
+ *                 example: 10000
+ *               requireManualApproval:
+ *                 type: boolean
+ *                 example: true
+ *               autoRejectHighRisk:
+ *                 type: boolean
+ *                 example: true
+ *               policyEnabled:
+ *                 type: boolean
+ *                 example: true
  *               status:
  *                 type: string
  *                 enum: [active, disabled]
@@ -189,6 +336,21 @@ router.get("/policies", requireAuth, async (req, res, next) => {
  *                 rules:
  *                   type: object
  *                   additionalProperties: true
+ *                 agentId:
+ *                   nullable: true
+ *                   type: string
+ *                 maxTransactionAmount:
+ *                   nullable: true
+ *                   type: number
+ *                 dailyLimit:
+ *                   nullable: true
+ *                   type: number
+ *                 requireManualApproval:
+ *                   type: boolean
+ *                 autoRejectHighRisk:
+ *                   type: boolean
+ *                 policyEnabled:
+ *                   type: boolean
  *                 createdAt:
  *                   type: string
  *                   format: date-time
@@ -202,33 +364,67 @@ router.get("/policies", requireAuth, async (req, res, next) => {
  */
 router.post("/policies", requireAuth, async (req, res, next) => {
   try {
-    const { name, description, rules, status } = req.body || {};
+    const agentId = req.body?.agentId
+      ? requireUuid(req.body.agentId, "agentId")
+      : null;
+    const maxTransactionAmount = optionalFiniteNumber(
+      req.body?.maxTransactionAmount,
+      "maxTransactionAmount",
+    );
+    const dailyLimit = optionalFiniteNumber(req.body?.dailyLimit, "dailyLimit");
+    const requireManualApproval =
+      typeof req.body?.requireManualApproval === "boolean"
+        ? req.body.requireManualApproval
+        : false;
+    const autoRejectHighRisk =
+      typeof req.body?.autoRejectHighRisk === "boolean"
+        ? req.body.autoRejectHighRisk
+        : false;
+    const policyEnabled =
+      typeof req.body?.policyEnabled === "boolean"
+        ? req.body.policyEnabled
+        : true;
+    const explicitRules = optionalObject(req.body?.rules, "rules") || {};
 
-    if (!name) {
-      return res.status(400).json({ message: "name is required" });
+    if (agentId) {
+      const agent = await Agent.findOne({
+        where: {
+          id: agentId,
+          creator_id: req.user.id,
+        },
+      });
+
+      if (!agent) {
+        return res.status(404).json({ message: "Agent not found for this user" });
+      }
     }
 
     const policy = await createPolicy({
       userId: req.user.id,
-      name: String(name).trim(),
-      description: description ? String(description).trim() : null,
-      rules: rules && typeof rules === "object" ? rules : {},
+      name: requireString(req.body?.name, "name", { min: 2, max: 120 }),
+      description: optionalString(req.body?.description, "description", {
+        max: 500,
+      }),
+      rules: {
+        ...explicitRules,
+        agentId,
+        maxTransactionAmount,
+        dailyLimit,
+        requireManualApproval,
+        autoRejectHighRisk,
+        policyEnabled,
+      },
       status:
-        status && ["active", "disabled"].includes(String(status).trim().toLowerCase())
-          ? String(status).trim().toLowerCase()
-          : "active",
+        optionalEnum(req.body?.status, "status", ["active", "disabled"]) ||
+        (policyEnabled ? "active" : "disabled"),
     });
 
-    return res.status(201).json({
-      id: policy.id,
-      name: policy.name,
-      description: policy.description,
-      status: policy.status,
-      rules: policy.rules,
-      createdAt: policy.created_at,
-      updatedAt: policy.updated_at,
-    });
+    return res.status(201).json(formatPolicy(policy));
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });
@@ -252,6 +448,29 @@ router.post("/policies", requireAuth, async (req, res, next) => {
  *     responses:
  *       200:
  *         description: Transaction details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 agentId:
+ *                   nullable: true
+ *                   type: string
+ *                 displayType:
+ *                   type: string
+ *                 amount:
+ *                   nullable: true
+ *                   type: number
+ *                 amountUnit:
+ *                   nullable: true
+ *                   type: string
+ *                 riskRating:
+ *                   nullable: true
+ *                   type: string
+ *                 status:
+ *                   type: string
  *       401:
  *         description: Unauthorized
  *       404:
@@ -259,7 +478,10 @@ router.post("/policies", requireAuth, async (req, res, next) => {
  */
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
-    const transaction = await getTransactionForUser(req.params.id, req.user.id);
+    const transaction = await getTransactionForUser(
+      requireUuid(req.params.id, "id"),
+      req.user.id,
+    );
 
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found" });
@@ -267,6 +489,10 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 
     return res.json(formatTransaction(transaction));
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });

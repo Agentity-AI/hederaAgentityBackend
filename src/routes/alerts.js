@@ -4,6 +4,7 @@ const router = express.Router();
 const Alert = require("../models/alert");
 const { requireAuth } = require("../middleware/auth");
 const { formatAlert } = require("../services/alerts/alertService");
+const { ValidationError, optionalEnum, requireUuid } = require("../utils/validation");
 
 /**
  * @openapi
@@ -90,6 +91,15 @@ const { formatAlert } = require("../services/alerts/alertService");
  *                       metadata:
  *                         type: object
  *                         additionalProperties: true
+ *                       actionLinks:
+ *                         type: object
+ *                         properties:
+ *                           resolve:
+ *                             type: string
+ *                             example: "/alerts/3b4c37d1-95a4-4ee2-8c9f-49e1f45dc001/status"
+ *                           dismiss:
+ *                             type: string
+ *                             example: "/alerts/3b4c37d1-95a4-4ee2-8c9f-49e1f45dc001/status"
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -103,11 +113,19 @@ router.get("/", requireAuth, async (req, res, next) => {
     const where = { user_id: req.user.id };
 
     if (req.query.status) {
-      where.status = String(req.query.status).trim().toLowerCase();
+      where.status =
+        optionalEnum(req.query.status, "status", ["active", "resolved", "dismissed"]) ||
+        undefined;
     }
 
     if (req.query.severity) {
-      where.severity = String(req.query.severity).trim().toLowerCase();
+      where.severity =
+        optionalEnum(req.query.severity, "severity", [
+          "low",
+          "medium",
+          "high",
+          "critical",
+        ]) || undefined;
     }
 
     if (req.query.type) {
@@ -125,6 +143,10 @@ router.get("/", requireAuth, async (req, res, next) => {
       items: items.map(formatAlert),
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });
@@ -176,6 +198,9 @@ router.get("/", requireAuth, async (req, res, next) => {
  *                     critical:
  *                       type: integer
  *                       example: 1
+ *                 critical:
+ *                   type: integer
+ *                   example: 1
  *       401:
  *         description: Missing or invalid authentication token
  *       500:
@@ -194,6 +219,7 @@ router.get("/summary", requireAuth, async (req, res, next) => {
       active: 0,
       resolved: 0,
       dismissed: 0,
+      critical: 0,
       bySeverity: {
         low: 0,
         medium: 0,
@@ -207,6 +233,8 @@ router.get("/summary", requireAuth, async (req, res, next) => {
       summary.bySeverity[alert.severity] =
         (summary.bySeverity[alert.severity] || 0) + 1;
     }
+
+    summary.critical = summary.bySeverity.critical;
 
     return res.json(summary);
   } catch (error) {
@@ -257,17 +285,12 @@ router.get("/summary", requireAuth, async (req, res, next) => {
  */
 router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
-    const status = String(req.body?.status || "").trim().toLowerCase();
-
-    if (!["active", "resolved", "dismissed"].includes(status)) {
-      return res.status(400).json({
-        message: "status must be one of: active, resolved, dismissed",
-      });
-    }
+    const status =
+      optionalEnum(req.body?.status, "status", ["active", "resolved", "dismissed"]) || "";
 
     const alert = await Alert.findOne({
       where: {
-        id: req.params.id,
+        id: requireUuid(req.params.id, "id"),
         user_id: req.user.id,
       },
     });
@@ -280,6 +303,10 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
 
     return res.json(formatAlert(alert));
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });

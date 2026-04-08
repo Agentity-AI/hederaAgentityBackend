@@ -23,6 +23,7 @@ const workflowRoutes = require("./routes/workflow");
 const alertRoutes = require("./routes/alerts");
 const transactionRoutes = require("./routes/transactions");
 const systemRoutes = require("./routes/system");
+const settingsRoutes = require("./routes/settings");
 
 const app = express();
 
@@ -51,7 +52,7 @@ app.use(
       return cb(null, true);
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
@@ -101,6 +102,7 @@ app.use("/workflow", workflowRoutes);
 app.use("/alerts", alertRoutes);
 app.use("/transactions", transactionRoutes);
 app.use("/system", systemRoutes);
+app.use("/settings", settingsRoutes);
 
 /**
  * =============================

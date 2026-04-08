@@ -6,6 +6,12 @@ const Agent = require("../models/agent");
 const AgentWallet = require("../models/agentWallet");
 const { requireAuth } = require("../middleware/auth");
 const { logEvent } = require("../services/audit/logEvent");
+const {
+  ValidationError,
+  requireHederaAccountId,
+  requireString,
+  requireUuid,
+} = require("../utils/validation");
 
 /**
  * @openapi
@@ -77,19 +83,19 @@ const { logEvent } = require("../services/audit/logEvent");
  */
 router.post("/link", requireAuth, async (req, res, next) => {
   try {
-    const { agentId, hederaAccountId, hederaPublicKey, kmsKeyId } =
-      req.body || {};
-
-    const trimmedAgentId = agentId?.trim();
-    const trimmedHederaAccountId = hederaAccountId?.trim();
-    const trimmedHederaPublicKey = hederaPublicKey?.trim();
-    const trimmedKmsKeyId = kmsKeyId?.trim();
-
-    if (!trimmedAgentId || !trimmedHederaAccountId || !trimmedHederaPublicKey) {
-      return res.status(400).json({
-        message: "agentId, hederaAccountId, and hederaPublicKey are required",
-      });
-    }
+    const trimmedAgentId = requireUuid(req.body?.agentId, "agentId");
+    const trimmedHederaAccountId = requireHederaAccountId(
+      req.body?.hederaAccountId,
+      "hederaAccountId",
+    );
+    const trimmedHederaPublicKey = requireString(
+      req.body?.hederaPublicKey,
+      "hederaPublicKey",
+      { min: 16, max: 255 },
+    );
+    const trimmedKmsKeyId = req.body?.kmsKeyId
+      ? requireString(req.body.kmsKeyId, "kmsKeyId", { min: 3, max: 255 })
+      : null;
 
     const agent = await Agent.findOne({
       where: {
@@ -186,6 +192,12 @@ router.post("/link", requireAuth, async (req, res, next) => {
       createdAt: wallet.created_at,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
     if (error?.name === "SequelizeUniqueConstraintError") {
       return res.status(409).json({
         message:

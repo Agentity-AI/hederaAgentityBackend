@@ -8,14 +8,20 @@ const { simulateAgent } = require("../services/sandbox/sandboxService");
 const { logEvent } = require("../services/audit/logEvent");
 const { createAlert } = require("../services/alerts/alertService");
 const { buildSimulationAlert } = require("../services/alerts/alertUtils");
+const {
+  ValidationError,
+  optionalObject,
+  requireString,
+  requireUuid,
+} = require("../utils/validation");
 
 const SCENARIOS = [
   "Token Swap",
   "Liquidity Pool",
   "NFT Mint",
-  "Governance Vote",
-  "Yield Farming",
-  "Oracle Query",
+  "Contract Deployment",
+  "Multi-Sig Transaction",
+  "Cross-Chain Bridge",
 ];
 
 /**
@@ -48,6 +54,9 @@ const SCENARIOS = [
  *                     - "Token Swap"
  *                     - "Liquidity Pool"
  *                     - "NFT Mint"
+ *                     - "Contract Deployment"
+ *                     - "Multi-Sig Transaction"
+ *                     - "Cross-Chain Bridge"
  */
 router.get("/scenarios", (req, res) => {
   return res.json({ items: SCENARIOS });
@@ -173,6 +182,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *               scenarioType:
  *                 type: string
  *                 example: "Token Swap"
+ *                 description: Use one of the labels from `/simulation/scenarios`.
  *               parameters:
  *                 type: object
  *                 additionalProperties: true
@@ -226,13 +236,12 @@ router.get("/history", requireAuth, async (req, res, next) => {
  */
 router.post("/run", requireAuth, async (req, res, next) => {
   try {
-    const { agentId, scenarioType, parameters } = req.body || {};
-
-    if (!agentId || !scenarioType) {
-      return res
-        .status(400)
-        .json({ message: "agentId and scenarioType are required" });
-    }
+    const agentId = requireUuid(req.body?.agentId, "agentId");
+    const scenarioType = requireString(req.body?.scenarioType, "scenarioType", {
+      min: 2,
+      max: 120,
+    });
+    const parameters = optionalObject(req.body?.parameters, "parameters") || {};
 
     const agent = await Agent.findOne({
       where: {
@@ -317,6 +326,10 @@ router.post("/run", requireAuth, async (req, res, next) => {
       result: run.result_payload,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });
@@ -372,10 +385,17 @@ router.post("/run", requireAuth, async (req, res, next) => {
  */
 router.post("/:id", requireAuth, async (req, res, next) => {
   try {
-    const { scenarioType = "Direct Simulation", parameters = {} } = req.body || {};
+    const agentId = requireUuid(req.params.id, "id");
+    const scenarioType = req.body?.scenarioType
+      ? requireString(req.body.scenarioType, "scenarioType", {
+          min: 2,
+          max: 120,
+        })
+      : "Direct Simulation";
+    const parameters = optionalObject(req.body?.parameters, "parameters") || {};
     const agent = await Agent.findOne({
       where: {
-        id: req.params.id,
+        id: agentId,
         creator_id: req.user.id,
       },
     });
@@ -423,6 +443,10 @@ router.post("/:id", requireAuth, async (req, res, next) => {
       parameters,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });

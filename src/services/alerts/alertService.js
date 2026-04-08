@@ -44,6 +44,10 @@ function formatAlert(alert) {
     sourceType: alert.source_type,
     message: alert.message,
     metadata: alert.metadata,
+    actionLinks: {
+      resolve: `/alerts/${alert.id}/status`,
+      dismiss: `/alerts/${alert.id}/status`,
+    },
     createdAt: alert.created_at,
     updatedAt: alert.updated_at,
   };

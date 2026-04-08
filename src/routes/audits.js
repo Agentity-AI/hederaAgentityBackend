@@ -6,6 +6,11 @@ const SmartContractAudit = require("../models/smartContractAudit");
 const { analyzeSourceCode } = require("../services/audit/contractAuditService");
 const { logEvent } = require("../services/audit/logEvent");
 const { createAlert } = require("../services/alerts/alertService");
+const {
+  ValidationError,
+  optionalUrl,
+  requireString,
+} = require("../utils/validation");
 
 /**
  * @openapi
@@ -91,23 +96,26 @@ const { createAlert } = require("../services/alerts/alertService");
  */
 router.post("/", requireAuth, async (req, res, next) => {
   try {
-    const {
-      contractName,
-      sourceType,
-      sourceCode,
-      githubUrl,
-    } = req.body || {};
-
-    const trimmedContractName = contractName?.trim();
-    const trimmedSourceCode = sourceCode?.trim();
-    const trimmedGithubUrl = githubUrl?.trim();
+    const trimmedContractName = requireString(req.body?.contractName, "contractName", {
+      min: 2,
+      max: 120,
+    });
+    const trimmedSourceCode = req.body?.sourceCode
+      ? requireString(req.body.sourceCode, "sourceCode", {
+          min: 10,
+          max: 50000,
+        })
+      : null;
+    const trimmedGithubUrl = req.body?.githubUrl
+      ? optionalUrl(req.body.githubUrl, "githubUrl")
+      : null;
     const normalizedSourceType =
-      typeof sourceType === "string" ? sourceType.toLowerCase().trim() : "";
+      typeof req.body?.sourceType === "string"
+        ? req.body.sourceType.toLowerCase().trim()
+        : "";
 
-    if (!trimmedContractName || !normalizedSourceType) {
-      return res
-        .status(400)
-        .json({ message: "contractName and sourceType are required" });
+    if (!normalizedSourceType) {
+      return res.status(400).json({ message: "sourceType is required" });
     }
 
     if (!["paste", "github"].includes(normalizedSourceType)) {
@@ -182,6 +190,10 @@ router.post("/", requireAuth, async (req, res, next) => {
       summary: audit.summary,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });

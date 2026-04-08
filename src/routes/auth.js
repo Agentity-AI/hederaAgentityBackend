@@ -3,6 +3,14 @@ const router = express.Router();
 
 const { supabaseAdmin, supabaseAuth } = require("../config/supabase");
 const { buildDashboard } = require("../services/dashboard/buildDashboard");
+const {
+  ValidationError,
+  requireEmail,
+  requirePassword,
+  requireString,
+} = require("../utils/validation");
+
+const AUTH_COOKIE_MAX_AGE_DAYS = Number(process.env.AUTH_COOKIE_MAX_AGE_DAYS || 7);
 
 function badRequest(res, message) {
   return res.status(400).json({ success: false, message });
@@ -15,7 +23,7 @@ function setAuthCookie(res, jwt) {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: AUTH_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000,
     path: "/",
   });
 }
@@ -163,11 +171,9 @@ function setAuthCookie(res, jwt) {
 
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, name } = req.body || {};
-
-    if (!email || !password || !name) {
-      return badRequest(res, "email, password, and name are required");
-    }
+    const email = requireEmail(req.body?.email);
+    const password = requirePassword(req.body?.password);
+    const name = requireString(req.body?.name, "name", { min: 2, max: 80 });
 
     const { error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -223,11 +229,8 @@ router.post("/register", async (req, res, next) => {
 
 router.post("/login", async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
-
-    if (!email || !password) {
-      return badRequest(res, "email and password are required");
-    }
+    const email = requireEmail(req.body?.email);
+    const password = requirePassword(req.body?.password);
 
     const { data, error } = await supabaseAuth.auth.signInWithPassword({
       email,
@@ -282,6 +285,14 @@ router.post("/logout", async (req, res) => {
     ok: true,
     message: "Signed out successfully",
   });
+});
+
+router.use((error, req, res, next) => {
+  if (error instanceof ValidationError) {
+    return badRequest(res, error.message);
+  }
+
+  return next(error);
 });
 
 module.exports = router;

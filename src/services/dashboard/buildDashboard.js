@@ -184,6 +184,14 @@ async function buildDashboard(user, options = {}) {
     }
   }
 
+  const normalizedRecentActivity = recentActivity.map((e) => ({
+    id: e.id,
+    action: e.action,
+    agent_id: e.agent_id,
+    payload: e.payload,
+    createdAt: e.created_at,
+  }));
+
   return {
     email,
     name,
@@ -210,13 +218,8 @@ async function buildDashboard(user, options = {}) {
       message: alert.message,
       createdAt: alert.created_at,
     })),
-    RecentActivity: recentActivity.map((e) => ({
-      id: e.id,
-      action: e.action,
-      agent_id: e.agent_id,
-      payload: e.payload,
-      createdAt: e.created_at,
-    })),
+    RecentActivity: normalizedRecentActivity,
+    recentActivity: normalizedRecentActivity,
   };
 }
 

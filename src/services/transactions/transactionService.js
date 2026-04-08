@@ -90,6 +90,9 @@ async function createPolicy({
 }
 
 function formatTransaction(transaction) {
+  const metadata = transaction.metadata || {};
+  const amountUnit = metadata.amountUnit || metadata.currency || null;
+
   return {
     id: transaction.id,
     agentId: transaction.agent_id,
@@ -97,8 +100,10 @@ function formatTransaction(transaction) {
     taskExecutionId: transaction.task_execution_id,
     paymentRecordId: transaction.payment_record_id,
     transactionType: transaction.transaction_type,
+    displayType: metadata.displayType || transaction.transaction_type,
     contractAddress: transaction.contract_address,
     amount: transaction.amount == null ? null : Number(transaction.amount),
+    amountUnit,
     status: transaction.status,
     riskRating: transaction.risk_rating,
     txHash: transaction.tx_hash,

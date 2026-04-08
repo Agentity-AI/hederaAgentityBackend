@@ -18,6 +18,12 @@ const { logEvent } = require("../services/audit/logEvent");
 const { createAlert } = require("../services/alerts/alertService");
 const { buildSimulationAlert } = require("../services/alerts/alertUtils");
 const { createTransactionRecord } = require("../services/transactions/transactionService");
+const {
+  ValidationError,
+  optionalObject,
+  requireString,
+  requireUuid,
+} = require("../utils/validation");
 
 /**
  * @openapi
@@ -95,11 +101,12 @@ const { createTransactionRecord } = require("../services/transactions/transactio
  */
 router.post("/request", requireAuth, async (req, res, next) => {
   try {
-    const { agentId, taskType, inputPayload } = req.body || {};
-
-    if (!agentId || !taskType) {
-      return res.status(400).json({ message: "agentId and taskType are required" });
-    }
+    const agentId = requireUuid(req.body?.agentId, "agentId");
+    const taskType = requireString(req.body?.taskType, "taskType", {
+      min: 2,
+      max: 80,
+    });
+    const inputPayload = optionalObject(req.body?.inputPayload, "inputPayload") || {};
 
     const agent = await Agent.findOne({
       where: {
@@ -137,6 +144,10 @@ router.post("/request", requireAuth, async (req, res, next) => {
       createdAt: task.created_at,
     });
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });
@@ -358,6 +369,12 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    if (task.status !== "simulated") {
+      return res.status(400).json({
+        message: "Task must be simulated before payment",
+      });
+    }
+
     try {
       const quote = await createPaymentQuote({
         fromUserId: req.user.id,
@@ -515,9 +532,9 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
-    if (!["paid", "simulated"].includes(task.status)) {
+    if (task.status !== "paid") {
       return res.status(400).json({
-        message: "Task must be simulated and/or paid before execution",
+        message: "Task must be paid before execution",
       });
     }
 
@@ -629,6 +646,10 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
       throw executionError;
     }
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     next(error);
   }
 });

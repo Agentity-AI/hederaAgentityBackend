@@ -8,6 +8,13 @@ const {
   buildKibblePaymentLink,
   resolveKibbleParams,
 } = require("../services/payments/kibbleService");
+const {
+  ValidationError,
+  optionalFiniteNumber,
+  optionalString,
+  optionalUrl,
+  requireUuid,
+} = require("../utils/validation");
 
 async function findOwnedAgent(agentId, userId) {
   return Agent.findOne({
@@ -141,20 +148,7 @@ function buildKibbleResponse(agent, kibbleParams) {
  */
 router.post("/kibble-link", requireAuth, async (req, res, next) => {
   try {
-    const {
-      agentId,
-      toChain,
-      toToken,
-      toAddress,
-      toAmount,
-      minAmountUSD,
-      agentName,
-      agentLogo,
-    } = req.body || {};
-
-    if (!agentId) {
-      return res.status(400).json({ message: "agentId is required" });
-    }
+    const agentId = requireUuid(req.body?.agentId, "agentId");
 
     const agent = await findOwnedAgent(agentId, req.user.id);
 
@@ -164,17 +158,21 @@ router.post("/kibble-link", requireAuth, async (req, res, next) => {
 
     const kibbleParams = resolveKibbleParams({
       agent,
-      toChain,
-      toToken,
-      toAddress,
-      toAmount,
-      minAmountUSD,
-      agentName,
-      agentLogo,
+      toChain: optionalFiniteNumber(req.body?.toChain, "toChain"),
+      toToken: optionalString(req.body?.toToken, "toToken", { max: 255 }),
+      toAddress: optionalString(req.body?.toAddress, "toAddress", { max: 255 }),
+      toAmount: optionalString(req.body?.toAmount, "toAmount", { max: 40 }),
+      minAmountUSD: optionalFiniteNumber(req.body?.minAmountUSD, "minAmountUSD"),
+      agentName: optionalString(req.body?.agentName, "agentName", { max: 120 }),
+      agentLogo: optionalUrl(req.body?.agentLogo, "agentLogo"),
     });
 
     return res.json(buildKibbleResponse(agent, kibbleParams));
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     if (
       error.message?.includes("Kibble") ||
       error.message?.includes("toChain") ||
@@ -261,7 +259,10 @@ router.post("/kibble-link", requireAuth, async (req, res, next) => {
  */
 router.get("/kibble-link/:agentId", requireAuth, async (req, res, next) => {
   try {
-    const agent = await findOwnedAgent(req.params.agentId, req.user.id);
+    const agent = await findOwnedAgent(
+      requireUuid(req.params.agentId, "agentId"),
+      req.user.id,
+    );
 
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
@@ -269,17 +270,21 @@ router.get("/kibble-link/:agentId", requireAuth, async (req, res, next) => {
 
     const kibbleParams = resolveKibbleParams({
       agent,
-      toChain: req.query.toChain,
-      toToken: req.query.toToken,
-      toAddress: req.query.toAddress,
-      toAmount: req.query.toAmount,
-      minAmountUSD: req.query.minAmountUSD,
-      agentName: req.query.agentName,
-      agentLogo: req.query.agentLogo,
+      toChain: optionalFiniteNumber(req.query.toChain, "toChain"),
+      toToken: optionalString(req.query.toToken, "toToken", { max: 255 }),
+      toAddress: optionalString(req.query.toAddress, "toAddress", { max: 255 }),
+      toAmount: optionalString(req.query.toAmount, "toAmount", { max: 40 }),
+      minAmountUSD: optionalFiniteNumber(req.query.minAmountUSD, "minAmountUSD"),
+      agentName: optionalString(req.query.agentName, "agentName", { max: 120 }),
+      agentLogo: optionalUrl(req.query.agentLogo, "agentLogo"),
     });
 
     return res.json(buildKibbleResponse(agent, kibbleParams));
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
     if (
       error.message?.includes("Kibble") ||
       error.message?.includes("toChain") ||

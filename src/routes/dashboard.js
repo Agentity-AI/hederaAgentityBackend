@@ -132,6 +132,11 @@ const { buildDashboard } = require("../services/dashboard/buildDashboard");
  *                         type: string
  *                         format: date-time
  *                         example: "2026-03-16T15:26:29.803Z"
+ *                 recentActivity:
+ *                   type: array
+ *                   description: camelCase alias of `RecentActivity` for frontend convenience
+ *                   items:
+ *                     type: object
  *       401:
  *         description: Unauthorized
  *       500:
