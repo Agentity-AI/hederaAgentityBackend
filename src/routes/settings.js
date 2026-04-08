@@ -1,8 +1,26 @@
 const express = require("express");
+const { Op } = require("sequelize");
 
 const router = express.Router();
 
+const sequelize = require("../config/database");
 const { supabaseAdmin } = require("../config/supabase");
+const Agent = require("../models/agent");
+const AgentBehaviorLog = require("../models/agentBehaviorLog");
+const AgentHcsMessage = require("../models/agentHcsMessage");
+const AgentHcsRegistry = require("../models/agentHcsRegistry");
+const AgentMetadata = require("../models/agentMetadata");
+const AgentReputation = require("../models/agentReputation");
+const AgentWallet = require("../models/agentWallet");
+const Alert = require("../models/alert");
+const KmsAuditLog = require("../models/kmsAuditLog");
+const PaymentRecord = require("../models/paymentRecord");
+const SimulationRun = require("../models/simulationRun");
+const SmartContractAudit = require("../models/smartContractAudit");
+const TaskExecution = require("../models/taskExecution");
+const TransactionPolicy = require("../models/transactionPolicy");
+const TransactionRecord = require("../models/transactionRecord");
+const UserAgentEvent = require("../models/userAgentEvent");
 const UserApiKey = require("../models/userApiKey");
 const { requireAuth } = require("../middleware/auth");
 const { logEvent } = require("../services/audit/logEvent");
@@ -45,6 +63,17 @@ async function persistUserMetadata(userId, userMetadata) {
 }
 
 function buildProfilePatch(body = {}) {
+  const allowedFields = ["username"];
+  const unexpectedFields = Object.keys(body).filter(
+    (key) => !allowedFields.includes(key),
+  );
+
+  if (unexpectedFields.length > 0) {
+    throw new ValidationError(
+      `Only username can be updated in profile settings`,
+    );
+  }
+
   const username = requireString(body.username, "username", {
     min: 2,
     max: 80,
@@ -96,6 +125,81 @@ function stripNullishValues(object) {
   return Object.fromEntries(
     Object.entries(object).filter(([, value]) => value !== null),
   );
+}
+
+async function deleteUserData(userId) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const ownedAgents = await Agent.findAll({
+      where: { creator_id: userId },
+      attributes: ["id"],
+      transaction,
+    });
+    const agentIds = ownedAgents.map((agent) => agent.id);
+
+    await Promise.all([
+      UserAgentEvent.destroy({ where: { user_id: userId }, transaction }),
+      UserApiKey.destroy({ where: { user_id: userId }, transaction }),
+      SmartContractAudit.destroy({ where: { user_id: userId }, transaction }),
+      SimulationRun.destroy({ where: { user_id: userId }, transaction }),
+      TaskExecution.destroy({
+        where: { requester_user_id: userId },
+        transaction,
+      }),
+      PaymentRecord.destroy({
+        where: { from_user_id: userId },
+        transaction,
+      }),
+      TransactionRecord.destroy({ where: { user_id: userId }, transaction }),
+      TransactionPolicy.destroy({ where: { user_id: userId }, transaction }),
+      Alert.destroy({ where: { user_id: userId }, transaction }),
+      KmsAuditLog.destroy({ where: { user_id: userId }, transaction }),
+    ]);
+
+    if (agentIds.length > 0) {
+      const whereAgents = {
+        agent_id: {
+          [Op.in]: agentIds,
+        },
+      };
+
+      await Promise.all([
+        AgentBehaviorLog.destroy({ where: whereAgents, transaction }),
+        AgentHcsMessage.destroy({ where: whereAgents, transaction }),
+        AgentHcsRegistry.destroy({ where: whereAgents, transaction }),
+        AgentMetadata.destroy({ where: whereAgents, transaction }),
+        AgentReputation.destroy({ where: whereAgents, transaction }),
+        AgentWallet.destroy({ where: whereAgents, transaction }),
+        Alert.destroy({ where: whereAgents, transaction }),
+        SimulationRun.destroy({ where: whereAgents, transaction }),
+        TaskExecution.destroy({ where: whereAgents, transaction }),
+        PaymentRecord.destroy({
+          where: {
+            to_agent_id: {
+              [Op.in]: agentIds,
+            },
+          },
+          transaction,
+        }),
+        TransactionRecord.destroy({ where: whereAgents, transaction }),
+      ]);
+
+      await Agent.destroy({
+        where: {
+          id: {
+            [Op.in]: agentIds,
+          },
+        },
+        transaction,
+      });
+    }
+
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 }
 
 async function updateSettingsSection(req, res, patchBuilder, action, payloadLabel) {
@@ -161,7 +265,7 @@ router.get("/", requireAuth, async (req, res, next) => {
  *     description: |
  *       Updates the editable profile data for the authenticated user.
  *       At the moment, the frontend should only allow changing `username`.
- *       `email` and `company` remain read-only in this API contract.
+ *       `email` remains read-only in this API contract.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -193,6 +297,103 @@ router.patch("/profile", requireAuth, async (req, res, next) => {
       "settings_profile_update",
       "profile",
     );
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /settings/account:
+ *   delete:
+ *     tags: [Settings]
+ *     summary: Permanently delete the authenticated user's account
+ *     description: |
+ *       Danger-zone endpoint for permanent account deletion.
+ *       This removes the authenticated user's local backend data and then deletes the Supabase auth user.
+ *
+ *       Frontend safety note:
+ *       - require an explicit confirmation input before calling this route
+ *       - send `confirmText: DELETE`
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [confirmText]
+ *             properties:
+ *               confirmText:
+ *                 type: string
+ *                 example: "DELETE"
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Account deleted successfully"
+ *       400:
+ *         description: Missing or invalid confirmation text
+ *       401:
+ *         description: Unauthorized
+ *       502:
+ *         description: Local data was removed but upstream auth deletion failed
+ */
+router.delete("/account", requireAuth, async (req, res, next) => {
+  try {
+    const confirmText = requireString(req.body?.confirmText, "confirmText", {
+      min: 6,
+      max: 20,
+    });
+
+    if (confirmText !== "DELETE") {
+      return res.status(400).json({
+        message: "confirmText must be exactly DELETE",
+      });
+    }
+
+    const currentUser = await loadCurrentUser(req.user.id);
+
+    await logEvent(req, {
+      action: "settings_account_delete_requested",
+      payload: {
+        email: currentUser.email,
+      },
+    });
+
+    await deleteUserData(req.user.id);
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(req.user.id);
+
+    if (error) {
+      return res.status(502).json({
+        message:
+          "Account data was deleted locally, but auth deletion failed. Please contact support to complete account removal.",
+      });
+    }
+
+    res.clearCookie("agentity_jwt", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    });
+
+    return res.json({
+      success: true,
+      message: "Account deleted successfully",
+    });
   } catch (error) {
     return next(error);
   }

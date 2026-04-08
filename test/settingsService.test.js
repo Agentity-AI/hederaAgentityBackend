@@ -39,7 +39,7 @@ test("buildUpdatedMetadata merges profile and keeps existing settings", () => {
     {
       name: "Old Name",
       agentitySettings: {
-        profile: { username: "Old Name", company: "Agentity Labs" },
+        profile: { username: "Old Name" },
         notifications: { emailAlerts: true },
       },
     },
@@ -50,7 +50,6 @@ test("buildUpdatedMetadata merges profile and keeps existing settings", () => {
   );
 
   assert.equal(result.name, "New Name");
-  assert.equal(result.agentitySettings.profile.company, "Agentity Labs");
   assert.equal(result.agentitySettings.notifications.emailAlerts, true);
   assert.equal(result.agentitySettings.security.auditLogging, false);
 });

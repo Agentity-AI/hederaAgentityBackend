@@ -4,7 +4,6 @@ const UserApiKey = require("../../models/userApiKey");
 const DEFAULT_SETTINGS = {
   profile: {
     username: "",
-    company: "",
   },
   notifications: {
     emailAlerts: false,
@@ -36,10 +35,6 @@ function normalizeSettingsMetadata(userMetadata = {}) {
         userMetadata.name ||
         userMetadata.full_name ||
         defaults.profile.username,
-      company:
-        raw?.profile?.company ||
-        userMetadata.company ||
-        defaults.profile.company,
     },
     notifications: {
       ...defaults.notifications,
@@ -59,7 +54,6 @@ function buildSettingsResponse(user, options = {}) {
     profile: {
       username: metadata.profile.username,
       email: user?.email || null,
-      company: metadata.profile.company,
     },
     notifications: metadata.notifications,
     security: {
