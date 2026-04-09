@@ -121,6 +121,12 @@ https://hederaagentitybackend.onrender.com/docs
 
 Swagger allows direct API testing through **Try It Out**.
 
+## Frontend Contract
+
+For a screen-by-screen frontend handoff guide, use:
+
+[`FRONTEND_INTEGRATION_CONTRACT.md`](/Users/decagon/Documents/Kaycee%20-%20Founders%20Cohort/Agentity/FRONTEND_INTEGRATION_CONTRACT.md)
+
 ## Recommended Swagger Test Flow
 
 Use Swagger in this order for the smoothest end-to-end backend test:
