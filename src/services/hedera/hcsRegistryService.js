@@ -26,6 +26,28 @@ const AgentReputation                       = require("../../models/agentReputat
 // Minimum trust score to be considered "healthy"
 const HEALTHY_THRESHOLD = parseInt(process.env.HEDERA_HEALTHY_THRESHOLD || "60");
 
+async function persistAgentReputation(agentId, score, riskLevel) {
+  const existing = await AgentReputation.findOne({
+    where: { agent_id: agentId },
+    order: [["updatedAt", "DESC"], ["createdAt", "DESC"]],
+  });
+
+  if (existing) {
+    await existing.update({
+      score,
+      risk_level: riskLevel,
+    });
+
+    return existing;
+  }
+
+  return AgentReputation.create({
+    agent_id: agentId,
+    score,
+    risk_level: riskLevel,
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // INTERNAL HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -286,11 +308,7 @@ async function runImmediateVerification(agent, registry) {
   });
 
   // Update AgentReputation to match
-  await AgentReputation.upsert({
-    agent_id:   agent.id,
-    score,
-    risk_level: riskLevel,
-  });
+  await persistAgentReputation(agent.id, score, riskLevel);
 
   logger.info({
     message: `[hcs] Agent ${agent.id} verified — score: ${score}, healthy: ${isHealthy}`,
@@ -400,11 +418,7 @@ async function runScheduledReverification(agentId, registry) {
     status:             isHealthy ? "verified" : "flagged",
   });
 
-  await AgentReputation.upsert({
-    agent_id:   agentId,
-    score,
-    risk_level: riskLevel,
-  });
+  await persistAgentReputation(agentId, score, riskLevel);
 
   logger.info({
     message: `[hcs] Agent ${agentId} reverified — score: ${score}, delta: ${scoreDelta}, healthy: ${isHealthy}`,

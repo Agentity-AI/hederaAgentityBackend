@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
+const { Op } = require("sequelize");
 const sequelize = require("../config/database");
 const Agent = require("../models/agent");
 const AgentMetadata = require("../models/agentMetadata");
@@ -149,6 +150,53 @@ function formatAgentResponse(agent, options = {}) {
     lastActivityType: lastActivity?.type || null,
     createdAt: data.createdAt,
   };
+}
+
+function buildLatestByAgentId(items) {
+  const map = new Map();
+
+  for (const item of items) {
+    const key = item.agent_id;
+    if (!key || map.has(key)) continue;
+    map.set(key, item);
+  }
+
+  return map;
+}
+
+async function hydrateAgentRelations(agents) {
+  const agentIds = agents.map((agent) => agent.id);
+  if (agentIds.length === 0) return [];
+
+  const [metadataRows, reputationRows, hcsRows] = await Promise.all([
+    AgentMetadata.findAll({
+      where: { agent_id: { [Op.in]: agentIds } },
+      order: [["updatedAt", "DESC"], ["createdAt", "DESC"]],
+    }),
+    AgentReputation.findAll({
+      where: { agent_id: { [Op.in]: agentIds } },
+      order: [["updatedAt", "DESC"], ["createdAt", "DESC"]],
+    }),
+    AgentHcsRegistry.findAll({
+      where: { agent_id: { [Op.in]: agentIds } },
+      order: [["updatedAt", "DESC"], ["createdAt", "DESC"]],
+    }),
+  ]);
+
+  const metadataMap = buildLatestByAgentId(metadataRows);
+  const reputationMap = buildLatestByAgentId(reputationRows);
+  const hcsMap = buildLatestByAgentId(hcsRows);
+
+  return agents.map((agent) => {
+    const json = typeof agent.toJSON === "function" ? agent.toJSON() : { ...agent };
+
+    return {
+      ...json,
+      metadata: metadataMap.get(agent.id) || null,
+      reputation: reputationMap.get(agent.id) || null,
+      hcsRegistry: hcsMap.get(agent.id) || null,
+    };
+  });
 }
 
 async function getLatestAgentActivity(agentId) {
@@ -575,16 +623,13 @@ router.get("/my", requireAuth, async (req, res) => {
   try {
     const agents = await Agent.findAll({
       where: { creator_id: req.user.id },
-      include: [
-        { model: AgentMetadata, as: "metadata" },
-        { model: AgentReputation, as: "reputation" },
-        { model: AgentHcsRegistry, as: "hcsRegistry" },
-      ],
       order: [["createdAt", "DESC"]],
     });
 
+    const hydratedAgents = await hydrateAgentRelations(agents);
+
     const items = await Promise.all(
-      agents.map(async (agent) =>
+      hydratedAgents.map(async (agent) =>
         formatAgentResponse(agent, {
           lastActivity: await getLatestAgentActivity(agent.id),
         }),
@@ -592,7 +637,7 @@ router.get("/my", requireAuth, async (req, res) => {
     );
 
     return res.json({
-      total: agents.length,
+      total: hydratedAgents.length,
       items,
     });
   } catch (error) {
@@ -734,16 +779,13 @@ router.get("/:id", requireAuth, async (req, res) => {
         id: agentId,
         creator_id: req.user.id,
       },
-      include: [
-        { model: AgentMetadata, as: "metadata" },
-        { model: AgentReputation, as: "reputation" },
-        { model: AgentHcsRegistry, as: "hcsRegistry" },
-      ],
     });
 
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
     }
+
+    const [hydratedAgent] = await hydrateAgentRelations([agent]);
 
     await logEvent(req, {
       action: "agent_fetch",
@@ -751,7 +793,7 @@ router.get("/:id", requireAuth, async (req, res) => {
     });
 
     return res.json(
-      formatAgentResponse(agent, {
+      formatAgentResponse(hydratedAgent, {
         lastActivity: await getLatestAgentActivity(agent.id),
       }),
     );

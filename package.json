@@ -10,6 +10,7 @@
     "smoke": "node scripts/smoke-backend.js",
     "smoke:wallet:inspect": "node scripts/inspect-smoke-wallet.js",
     "smoke:wallet:release": "node scripts/release-smoke-wallet.js",
+    "cleanup:agent-reputations": "node scripts/cleanup-agent-reputations.js",
     "sandbox:build": "docker build -t agentity-sandbox ./src/sandbox",
     "sandbox:run": "docker run --rm agentity-sandbox",
     "db:schema:apply": "psql \"$DATABASE_URL\" -f db/schema.sql",
