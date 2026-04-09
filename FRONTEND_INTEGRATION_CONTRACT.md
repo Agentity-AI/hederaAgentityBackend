@@ -466,6 +466,12 @@ Endpoint:
 GET /transactions/history
 ```
 
+Top-level summary fields now included:
+
+* `total`
+* `totalVolume`
+* `highRisk`
+
 Frontend-useful fields:
 
 * `id`

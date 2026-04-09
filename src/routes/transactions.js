@@ -72,6 +72,12 @@ function formatPolicy(policy) {
  *                 total:
  *                   type: integer
  *                   example: 2
+ *                 totalVolume:
+ *                   type: number
+ *                   example: 16750.5
+ *                 highRisk:
+ *                   type: integer
+ *                   example: 0
  *                 items:
  *                   type: array
  *                   items:
@@ -125,9 +131,19 @@ function formatPolicy(policy) {
 router.get("/history", requireAuth, async (req, res, next) => {
   try {
     const items = await listTransactionsForUser(req.user.id);
+    const totalVolume = items.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    );
+    const highRisk = items.filter(
+      (item) =>
+        ["high", "critical"].includes(String(item.risk_rating || "").toLowerCase()),
+    ).length;
 
     return res.json({
       total: items.length,
+      totalVolume: Number(totalVolume.toFixed(2)),
+      highRisk,
       items: items.map(formatTransaction),
     });
   } catch (error) {
