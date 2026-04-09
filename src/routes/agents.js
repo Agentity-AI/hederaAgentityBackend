@@ -178,9 +178,13 @@ async function getLatestAgentActivity(agentId) {
  *       This is the starting point for the full agent lifecycle in Swagger:
  *       register -> verify -> simulate -> pay -> execute.
  *
- *       Swagger testing note:
- *       - `agentName` and `publicKey` are the easiest fields to use in Try it out
- *       - snake_case aliases are also accepted for compatibility
+ *       Frontend contract:
+ *       - the current registration modal should primarily send `agentName`, `agentType`,
+ *         `publicKey` (wallet address), `description`, `apiEndpoint`, and `metadata`
+ *       - `modelName`, `version`, and `executionEnvironment` are still accepted, but they are
+ *         advanced optional fields and are no longer required by the UI
+ *       - snake_case aliases are still accepted for backward compatibility, but frontend clients
+ *         should prefer camelCase going forward
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -194,36 +198,42 @@ async function getLatestAgentActivity(agentId) {
  *             properties:
  *               agentName:
  *                 type: string
- *                 example: "Treasury Risk Monitor"
- *                 description: Frontend-friendly camelCase field for the agent name.
+ *                 example: "Alpha Trading Bot"
+ *                 description: Display name shown in the Agents list and detail views.
+ *               agentType:
+ *                 type: string
+ *                 example: "Trading Bot"
+ *                 description: Recommended frontend field. Use one of the labels returned by `GET /agents/types`.
  *               publicKey:
  *                 type: string
  *                 example: "0x42Ec816b0923eEF0c76589627107AdaBb749AB75"
- *                 description: Agent wallet or public identity key. Used for uniqueness and fingerprinting.
+ *                 description: Wallet or public identity key. The backend still requires this for uniqueness and fingerprinting.
  *               description:
  *                 type: string
- *                 example: "Monitors treasury and payment risk for the DAO."
- *               agentType:
- *                 type: string
- *                 example: "risk-monitor"
+ *                 example: "Executes monitored trading strategies across supported protocols."
  *               apiEndpoint:
  *                 type: string
- *                 example: "https://agent.example.com/api"
- *               modelName:
- *                 type: string
- *                 example: "gpt-4.1"
- *               version:
- *                 type: string
- *                 example: "1.0.0"
- *               executionEnvironment:
- *                 type: string
- *                 example: "api"
+ *                 example: "https://agent.example.com/api/trading-bot"
+ *                 description: Optional callback or control endpoint for the agent.
  *               metadata:
  *                 type: object
  *                 additionalProperties: true
  *                 example:
- *                   provider: "openai"
- *                   tier: "production"
+ *                   strategy: "swing"
+ *                   network: "avalanche"
+ *                 description: Optional JSON field from the modal's Metadata input. Strings that contain valid JSON are also accepted by the backend.
+ *               modelName:
+ *                 type: string
+ *                 example: "gpt-4.1"
+ *                 description: Advanced optional backend field. If omitted, the backend falls back to `agentType` or `unknown`.
+ *               version:
+ *                 type: string
+ *                 example: "1.0.0"
+ *                 description: Advanced optional backend field. Defaults to `unknown` when not provided.
+ *               executionEnvironment:
+ *                 type: string
+ *                 example: "api"
+ *                 description: Advanced optional backend field. Defaults to `api` when `apiEndpoint` is supplied, otherwise `unknown`.
  *               agent_name:
  *                 type: string
  *                 deprecated: true
@@ -242,6 +252,32 @@ async function getLatestAgentActivity(agentId) {
  *               execution_environment:
  *                 type: string
  *                 deprecated: true
+ *           examples:
+ *             frontendModalPayload:
+ *               summary: Recommended frontend payload
+ *               value:
+ *                 agentName: "Alpha Trading Bot"
+ *                 agentType: "Trading Bot"
+ *                 publicKey: "0x42Ec816b0923eEF0c76589627107AdaBb749AB75"
+ *                 description: "Executes monitored trading strategies across supported protocols."
+ *                 apiEndpoint: "https://agent.example.com/api/trading-bot"
+ *                 metadata:
+ *                   strategy: "swing"
+ *                   network: "avalanche"
+ *             advancedPayload:
+ *               summary: Optional advanced backend payload
+ *               value:
+ *                 agentName: "Treasury Risk Monitor"
+ *                 agentType: "Risk Monitoring Agent"
+ *                 publicKey: "0x42Ec816b0923eEF0c76589627107AdaBb749AB75"
+ *                 description: "Monitors treasury and payment risk for the DAO."
+ *                 apiEndpoint: "https://agent.example.com/api"
+ *                 modelName: "gpt-4.1"
+ *                 version: "1.0.0"
+ *                 executionEnvironment: "api"
+ *                 metadata:
+ *                   provider: "openai"
+ *                   tier: "production"
  *     responses:
  *       201:
  *         description: Agent registered successfully
@@ -276,7 +312,7 @@ async function getLatestAgentActivity(agentId) {
  *                   type: string
  *                   format: date-time
  *       400:
- *         description: Missing required registration fields
+ *         description: Missing required registration fields or invalid payload values
  *       401:
  *         description: Missing or invalid authentication token
  *       409:

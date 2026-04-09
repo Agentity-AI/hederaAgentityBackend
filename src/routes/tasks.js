@@ -46,6 +46,8 @@ const {
  *       Frontend testing note:
  *       - use the returned `id` for the remaining `/simulate`, `/pay`, and `/execute` endpoints
  *       - `agentId` must belong to the authenticated user
+ *       - for the current frontend, `taskType` should reflect the user action being requested,
+ *         such as `execution`, `swap`, or another workflow-specific label
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -66,6 +68,16 @@ const {
  *                 type: object
  *                 additionalProperties: true
  *                 example:
+ *                   target: "swap"
+ *                   network: "hedera-testnet"
+ *                   maxSlippageBps: 100
+ *           examples:
+ *             frontendTaskPayload:
+ *               summary: Recommended task creation payload
+ *               value:
+ *                 agentId: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 taskType: "execution"
+ *                 inputPayload:
  *                   target: "swap"
  *                   network: "hedera-testnet"
  *                   maxSlippageBps: 100

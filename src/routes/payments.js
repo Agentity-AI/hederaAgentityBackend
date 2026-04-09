@@ -61,6 +61,10 @@ function buildKibbleResponse(agent, kibbleParams) {
  *       - call this endpoint when you want to show a "Fund this agent" button or QR/link
  *       - use the returned `url` directly in the browser
  *       - if the agent's registered `public_key` is not an EVM wallet, pass `toAddress` explicitly
+ *
+ *       Frontend note:
+ *       - this endpoint is for optional agent funding links only
+ *       - it does not replace the Hedera-native `/tasks/:id/pay` execution-payment flow
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -101,6 +105,16 @@ function buildKibbleResponse(agent, kibbleParams) {
  *               agentLogo:
  *                 type: string
  *                 example: "https://example.com/agent-logo.png"
+ *           examples:
+ *             frontendFundingPayload:
+ *               summary: Recommended funding-link payload
+ *               value:
+ *                 agentId: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 toChain: 8453
+ *                 toToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+ *                 toAddress: "0x42Ec816b0923eEF0c76589627107AdaBb749AB75"
+ *                 toAmount: "10"
+ *                 agentName: "Agentity Agent"
  *     responses:
  *       200:
  *         description: Kibble payment link generated

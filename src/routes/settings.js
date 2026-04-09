@@ -266,6 +266,10 @@ router.get("/", requireAuth, async (req, res, next) => {
  *       Updates the editable profile data for the authenticated user.
  *       At the moment, the frontend should only allow changing `username`.
  *       `email` remains read-only in this API contract.
+ *
+ *       Important:
+ *       - any additional profile fields sent to this endpoint are rejected
+ *       - the frontend should not send `email`, `company`, or any other field here
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -280,6 +284,11 @@ router.get("/", requireAuth, async (req, res, next) => {
  *               username:
  *                 type: string
  *                 example: "John Developer"
+ *           examples:
+ *             usernameOnlyPayload:
+ *               summary: Only supported profile update payload
+ *               value:
+ *                 username: "John Developer"
  *     responses:
  *       200:
  *         description: Updated settings payload
@@ -329,6 +338,11 @@ router.patch("/profile", requireAuth, async (req, res, next) => {
  *               confirmText:
  *                 type: string
  *                 example: "DELETE"
+ *           examples:
+ *             dangerZonePayload:
+ *               summary: Required delete-account confirmation payload
+ *               value:
+ *                 confirmText: "DELETE"
  *     responses:
  *       200:
  *         description: Account deleted successfully

@@ -165,6 +165,11 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *     description: |
  *       Runs a sandbox simulation for one of the authenticated user's agents.
  *       This endpoint supports explicit `parameters` so it is easy to test directly from Swagger.
+ *
+ *       Frontend contract:
+ *       - the simulation screen should use `GET /agents/my` to populate the agent dropdown
+ *       - the scenario dropdown should use `GET /simulation/scenarios`
+ *       - the screen only needs to send `agentId`, `scenarioType`, and an optional `parameters` object
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -178,7 +183,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *             properties:
  *               agentId:
  *                 type: string
- *                 example: "uuid"
+ *                 example: "ac0d21d5-bb02-4d52-8004-4725488cf007"
  *               scenarioType:
  *                 type: string
  *                 example: "Token Swap"
@@ -187,6 +192,16 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *                 type: object
  *                 additionalProperties: true
  *                 example:
+ *                   amount: 10
+ *                   tokenIn: "USDC"
+ *                   tokenOut: "HBAR"
+ *           examples:
+ *             frontendSimulationPayload:
+ *               summary: Recommended simulation screen payload
+ *               value:
+ *                 agentId: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 scenarioType: "Token Swap"
+ *                 parameters:
  *                   amount: 10
  *                   tokenIn: "USDC"
  *                   tokenOut: "HBAR"

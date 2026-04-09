@@ -267,6 +267,12 @@ router.get("/summary", requireAuth, async (req, res, next) => {
  *     description: |
  *       Creates a user-scoped transaction policy that can be used by the frontend
  *       for approvals, limits, or operational controls around agent transactions.
+ *
+ *       Frontend contract:
+ *       - the policy modal should send `name`, optional `agentId`, `maxTransactionAmount`,
+ *         `dailyLimit`, `requireManualApproval`, `autoRejectHighRisk`, and `policyEnabled`
+ *       - `rules` is still supported for advanced use, but frontend clients do not need to
+ *         build raw policy JSON manually anymore
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -315,6 +321,18 @@ router.get("/summary", requireAuth, async (req, res, next) => {
  *                   allowedTypes:
  *                     - "payment"
  *                     - "execution"
+ *                 description: Advanced optional escape hatch. The backend also maps the modal fields above into this rules object automatically.
+ *           examples:
+ *             frontendPolicyPayload:
+ *               summary: Recommended policy modal payload
+ *               value:
+ *                 name: "Standard Trading Policy"
+ *                 agentId: "ac0d21d5-bb02-4d52-8004-4725488cf007"
+ *                 maxTransactionAmount: 1000
+ *                 dailyLimit: 10000
+ *                 requireManualApproval: true
+ *                 autoRejectHighRisk: true
+ *                 policyEnabled: true
  *     responses:
  *       201:
  *         description: Transaction policy created
