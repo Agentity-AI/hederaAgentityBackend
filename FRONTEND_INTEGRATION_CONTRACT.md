@@ -653,6 +653,13 @@ Endpoint:
 PATCH /settings/notifications
 ```
 
+Purpose:
+
+* save notification preferences from the Settings screen
+* persist Slack/webhook target URLs for later use
+* this does not currently send email, Slack, or webhook notifications by itself
+* real outbound delivery workers can be added later without changing the frontend contract
+
 Allowed fields:
 
 * `emailAlerts`
@@ -661,6 +668,35 @@ Allowed fields:
 * `criticalAlertsOnly`
 * `slackWebhookUrl`
 * `webhookUrl`
+
+Example payload:
+
+```json
+{
+  "emailAlerts": true,
+  "slackIntegration": false,
+  "webhookNotifications": true,
+  "criticalAlertsOnly": true,
+  "webhookUrl": "https://example.com/webhooks/agentity"
+}
+```
+
+Validation notes:
+
+* boolean fields must be real booleans
+* `slackWebhookUrl` and `webhookUrl` must be valid `http` or `https` URLs when provided
+* partial updates are allowed; the frontend can send only the fields that changed
+* saved values are returned by `GET /settings`
+
+Frontend implementation notes:
+
+* load the current toggle state from `GET /settings`
+* save Settings-screen changes with `PATCH /settings/notifications`
+* use the Alerts APIs for the actual in-app notification feed:
+  * `GET /alerts/summary` for cards and counters
+  * `GET /alerts` for the alert list
+  * `PATCH /alerts/{id}/status` for resolve and dismiss actions
+* do not assume the backend is already sending external email, Slack, or webhook deliveries just because the toggles are enabled
 
 
 ## Update Security

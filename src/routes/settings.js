@@ -419,6 +419,16 @@ router.delete("/account", requireAuth, async (req, res, next) => {
  *   patch:
  *     tags: [Settings]
  *     summary: Update notification preferences
+ *     description: |
+ *       Saves notification preferences for the authenticated user.
+ *       These settings are persisted and returned by `GET /settings`, but external delivery
+ *       channels are not yet dispatched by the backend. In the current implementation:
+ *       - `emailAlerts` stores whether the user wants email notifications
+ *       - `slackIntegration` and `slackWebhookUrl` store Slack preference and webhook target
+ *       - `webhookNotifications` and `webhookUrl` store generic webhook preference and target
+ *       - `criticalAlertsOnly` tells the client and future delivery workers to focus on critical alerts
+ *       Frontend clients should treat this endpoint as a settings-save API, not as an outbound
+ *       notification trigger.
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -443,6 +453,15 @@ router.delete("/account", requireAuth, async (req, res, next) => {
  *               webhookUrl:
  *                 type: string
  *                 example: "https://example.com/webhooks/agentity"
+ *           examples:
+ *             saveNotificationPreferences:
+ *               summary: Save notification settings from the Settings screen
+ *               value:
+ *                 emailAlerts: true
+ *                 slackIntegration: false
+ *                 webhookNotifications: true
+ *                 criticalAlertsOnly: true
+ *                 webhookUrl: "https://example.com/webhooks/agentity"
  *     responses:
  *       200:
  *         description: Updated settings payload
