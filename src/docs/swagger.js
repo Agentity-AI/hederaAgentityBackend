@@ -7,7 +7,7 @@ const options = {
       title: "Agentity API",
       version: "1.0.0",
       description:
-        "Agentity backend APIs (Auth, Agents, Simulation, Execution, Dashboard).",
+        "Agentity backend APIs (Auth, Agents, Simulation, Execution, Dashboard, Integrations). Protected routes accept Supabase JWTs and the agentity_jwt cookie. Task endpoints also accept active agty_live integration API keys in the Bearer header.",
     },
     servers: [
       { url: "http://localhost:5000", description: "Local" },

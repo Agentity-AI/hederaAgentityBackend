@@ -24,6 +24,7 @@ const alertRoutes = require("./routes/alerts");
 const transactionRoutes = require("./routes/transactions");
 const systemRoutes = require("./routes/system");
 const settingsRoutes = require("./routes/settings");
+const integrationRoutes = require("./routes/integrations");
 
 const app = express();
 
@@ -103,6 +104,7 @@ app.use("/alerts", alertRoutes);
 app.use("/transactions", transactionRoutes);
 app.use("/system", systemRoutes);
 app.use("/settings", settingsRoutes);
+app.use("/integrations", integrationRoutes);
 
 /**
  * =============================

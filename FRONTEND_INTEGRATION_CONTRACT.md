@@ -725,6 +725,117 @@ POST /settings/security/api-key/regenerate
 No request body needed.
 
 
+# Integration / Embed Setup
+
+This flow should be backend-driven. The frontend owns the screen layout, tabs, checklist UI, and copy buttons. The backend returns the real user-specific values: agent state, API key preview, public client key, embed config, and generated code snippets.
+
+
+## Integration Overview
+
+Endpoint:
+
+```text
+GET /integrations/overview
+```
+
+Use this as the first request when opening the integration setup screen.
+
+Frontend-useful response fields:
+
+* `baseUrl`
+* `hasAgent`
+* `hasVerifiedAgent`
+* `hasApiKey`
+* `agent`
+* `apiKey.preview`
+* `embedConfig`
+* `snippetTypes`
+* `nextSteps`
+
+
+## Generate Integration API Key
+
+Endpoint:
+
+```text
+POST /integrations/api-keys
+```
+
+No request body needed.
+
+Important:
+
+* this revokes the previous active key
+* the full plaintext key is returned once
+* later screens should show only `apiKey.preview` from `GET /integrations/overview`
+* copied server-side snippets can use this key as `Authorization: Bearer <agty_live_api_key>` for task endpoints
+
+
+## Save Embed Config
+
+Endpoint:
+
+```text
+PATCH /integrations/embed-config
+```
+
+Recommended payload:
+
+```json
+{
+  "agentId": "ac0d21d5-bb02-4d52-8004-4725488cf007",
+  "allowedOrigins": ["https://example.com", "http://localhost:3000"],
+  "theme": "system",
+  "defaultTaskType": "execution",
+  "webhookUrl": "https://example.com/api/agentity-webhook"
+}
+```
+
+Allowed fields:
+
+* `agentId`
+* `allowedOrigins`
+* `theme` - `light`, `dark`, or `system`
+* `defaultTaskType`
+* `webhookUrl`
+
+
+## Get Generated Snippet
+
+Endpoint:
+
+```text
+GET /integrations/snippets?type=react
+```
+
+Supported snippet types:
+
+* `javascript`
+* `react`
+* `html`
+* `curl`
+
+Optional query:
+
+```text
+agentId=<agent uuid>
+```
+
+Response fields:
+
+* `type`
+* `language`
+* `code`
+* `variables`
+* `warnings`
+
+Important:
+
+* snippets are generated from backend state
+* snippets may include placeholders if the user has no agent or no API key
+* snippets only include the API key preview, not the full secret
+
+
 ## Delete Account
 
 Endpoint:

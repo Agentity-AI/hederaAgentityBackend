@@ -89,6 +89,12 @@ AWS_REGION=
 AWS_KMS_KEY_ID=
 ```
 
+## Optional — Integration snippets
+
+```
+PUBLIC_API_BASE_URL=https://hederaagentitybackend.onrender.com
+```
+
 
 # Run the server
 
@@ -127,6 +133,73 @@ For a screen-by-screen frontend handoff guide, use:
 
 [`FRONTEND_INTEGRATION_CONTRACT.md`](/Users/decagon/Documents/Kaycee%20-%20Founders%20Cohort/Agentity/FRONTEND_INTEGRATION_CONTRACT.md)
 
+## Backend-Driven Integration Flow
+
+The frontend integration/setup screen should be backend-driven. The UI can own the layout, tabs, checklist, and copy buttons, while the backend returns user-specific agent state, API key preview, embed config, and generated code snippets.
+
+### Integration Endpoints
+
+```text
+GET /integrations/overview
+POST /integrations/api-keys
+GET /integrations/snippets?type=javascript
+GET /integrations/snippets?type=react
+GET /integrations/snippets?type=html
+GET /integrations/snippets?type=curl
+PATCH /integrations/embed-config
+```
+
+### Recommended Frontend Flow
+
+```text
+1. GET /integrations/overview
+2. If hasAgent=false, send user through POST /agents/register
+3. If hasVerifiedAgent=false, send user through POST /agents/{id}/verify
+4. If hasApiKey=false, call POST /integrations/api-keys
+5. PATCH /integrations/embed-config to save agent, origins, theme, and webhook
+6. GET /integrations/snippets?type=react or another supported snippet type
+```
+
+### Save Embed Config
+
+```http
+PATCH /integrations/embed-config
+Authorization: Bearer <jwt>
+Content-Type: application/json
+```
+
+```json
+{
+  "agentId": "ac0d21d5-bb02-4d52-8004-4725488cf007",
+  "allowedOrigins": ["https://example.com"],
+  "theme": "system",
+  "defaultTaskType": "execution",
+  "webhookUrl": "https://example.com/api/agentity-webhook"
+}
+```
+
+### Generate API Key
+
+```http
+POST /integrations/api-keys
+Authorization: Bearer <jwt>
+```
+
+The plaintext API key is returned once. Later calls only expose the safe preview through `/integrations/overview`.
+
+### Generate Snippet
+
+```http
+GET /integrations/snippets?type=react
+Authorization: Bearer <jwt>
+```
+
+The snippet response includes:
+
+* `code` - ready-to-copy snippet
+* `variables` - backend-selected values used in the snippet
+* `warnings` - missing setup steps such as no agent or no API key
+
 ## Recommended Swagger Test Flow
 
 Use Swagger in this order for the smoothest end-to-end backend test:
@@ -147,6 +220,10 @@ Use Swagger in this order for the smoothest end-to-end backend test:
 13. GET /transactions/history
 14. GET /workflow/summary
 15. GET /alerts
+16. GET /integrations/overview
+17. POST /integrations/api-keys
+18. PATCH /integrations/embed-config
+19. GET /integrations/snippets?type=react
 ```
 
 ### Swagger Tips
@@ -197,6 +274,12 @@ or
 
 ```
 agentity_jwt cookie
+```
+
+Integration clients can also use an active generated API key for task endpoints:
+
+```
+Authorization: Bearer <agty_live_api_key>
 ```
 
 
