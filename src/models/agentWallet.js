@@ -14,24 +14,14 @@ const AgentWallet = sequelize.define(
       allowNull: false,
       unique: true,
     },
-    solana_address: {
+    hedera_account_id: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
     },
-    solana_public_key: {
+    hedera_public_key: {
       type: DataTypes.TEXT,
       allowNull: false,
-    },
-    network: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: "devnet",
-    },
-    wallet_type: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: "agent",
     },
     kms_key_id: {
       type: DataTypes.TEXT,
@@ -49,11 +39,7 @@ const AgentWallet = sequelize.define(
     underscored: true,
     createdAt: "created_at",
     updatedAt: "updated_at",
-    indexes: [
-      { fields: ["agent_id"] },
-      { fields: ["solana_address"] },
-      { fields: ["network"] },
-    ],
+    indexes: [{ fields: ["agent_id"] }, { fields: ["hedera_account_id"] }],
   },
 );
 

@@ -39,7 +39,7 @@ GET /system/status
 POST /auth/register
 GET /dashboard/overview
 POST /agents/register
-POST /wallets/link
+POST /wallets/link when wallet env is available
 POST /agents/:id/verify
 GET /agents/my
 GET /workflow/summary
@@ -52,8 +52,8 @@ POST /tasks/request
 POST /tasks/:id/simulate
 GET /tasks/history
 GET /payments/history
-POST /tasks/:id/pay
-POST /tasks/:id/execute
+POST /tasks/:id/pay when wallet env is available
+POST /tasks/:id/execute when wallet env is available
 POST /transactions/policies
 GET /transactions/policies
 GET /transactions/history
@@ -66,19 +66,17 @@ Optional variables:
 
 ```text
 SMOKE_BASE_URL=http://localhost:5000
-SMOKE_SOLANA_ADDRESS=
-SMOKE_SOLANA_PUBLIC_KEY=
+SMOKE_HEDERA_ACCOUNT_ID=
+SMOKE_HEDERA_PUBLIC_KEY=
 SMOKE_KMS_KEY_ID=
 ```
 
 Notes:
 
 ```text
-If Solana wallet vars are missing, the script generates a temporary devnet-style public key and uses simulated payment mode.
+If Hedera is enabled and smoke wallet vars are missing, the script skips live payment and execution checks.
 If CRE is not configured, execution falls back to the local fallback response.
 If KMS is not configured, signing is simulated.
-Set SOLANA_OPERATOR_KEYPAIR_JSON or SOLANA_OPERATOR_KEYPAIR_PATH to write real devnet proof memos.
-Set SOLANA_ENABLE_REAL_TRANSFERS=true only after funding the operator wallet.
 ```
 
 ## Recommended manual verification after smoke test

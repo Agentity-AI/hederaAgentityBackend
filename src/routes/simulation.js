@@ -194,7 +194,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *                 example:
  *                   amount: 10
  *                   tokenIn: "USDC"
- *                   tokenOut: "SOL"
+ *                   tokenOut: "HBAR"
  *           examples:
  *             frontendSimulationPayload:
  *               summary: Recommended simulation screen payload
@@ -204,7 +204,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
  *                 parameters:
  *                   amount: 10
  *                   tokenIn: "USDC"
- *                   tokenOut: "SOL"
+ *                   tokenOut: "HBAR"
  *     responses:
  *       200:
  *         description: Simulation result

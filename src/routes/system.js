@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 
 const sequelize = require("../config/database");
-const { buildSolanaRuntimeStatus } = require("../services/solana/client");
 
 /**
  * @openapi
@@ -34,15 +33,15 @@ const { buildSolanaRuntimeStatus } = require("../services/solana/client");
  *                 database:
  *                   type: string
  *                   example: "connected"
- *                 solana:
- *                   type: object
- *                   additionalProperties: true
+ *                 hedera:
+ *                   type: string
+ *                   example: "configured"
  *                 cre:
  *                   type: string
  *                   example: "disabled"
  *                 network:
  *                   type: string
- *                   example: "devnet"
+ *                   example: "testnet"
  */
 router.get("/status", async (req, res) => {
   let database = "disconnected";
@@ -57,9 +56,12 @@ router.get("/status", async (req, res) => {
   return res.json({
     api: "healthy",
     database,
-    solana: buildSolanaRuntimeStatus(),
+    hedera:
+      process.env.HEDERA_OPERATOR_ID && process.env.HEDERA_OPERATOR_KEY
+        ? "configured"
+        : "disabled",
     cre: process.env.CRE_WEBHOOK_URL ? "configured" : "disabled",
-    network: process.env.SOLANA_CLUSTER || "devnet",
+    network: process.env.HEDERA_NETWORK || "testnet",
   });
 });
 

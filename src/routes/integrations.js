@@ -140,7 +140,7 @@ function buildEmbedPatch(body = {}, currentConfig = {}) {
  *               properties:
  *                 baseUrl:
  *                   type: string
- *                   example: "https://your-solana-agentity-api.example.com"
+ *                   example: "https://hederaagentitybackend.onrender.com"
  *                 hasAgent:
  *                   type: boolean
  *                 hasVerifiedAgent:

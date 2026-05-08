@@ -1,9 +1,12 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 
 const logger = require("./config/logger");
 const sequelize = require("./config/database");
+
 const { optionalAuth } = require("./middleware/auth");
 
 const agentRoutes = require("./routes/agents");
@@ -22,35 +25,32 @@ const transactionRoutes = require("./routes/transactions");
 const systemRoutes = require("./routes/system");
 const settingsRoutes = require("./routes/settings");
 const integrationRoutes = require("./routes/integrations");
-const solanaRoutes = require("./routes/solana");
 
 const app = express();
 
+/**
+ * =============================
+ * CORS (cookies require specific origins + credentials)
+ * =============================
+ */
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  // "https://your-frontend-domain.com",
+  // Add your deployed frontend domain(s) here:
 ];
 
 app.use(
   cors({
-    origin(origin, cb) {
-      // Non-browser clients often send no Origin header.
-      if (!origin) {
-        return cb(null, true);
-      }
+    origin: function (origin, cb) {
+      // allow curl/postman (no origin)
+      if (!origin) return cb(null, true);
 
-      // Allow explicitly trusted frontend origins.
-      if (allowedOrigins.includes(origin)) {
-        return cb(null, true);
-      }
+      // allow known origins
+      if (allowedOrigins.includes(origin)) return cb(null, true);
 
-      // Temporary fallback.
-      // Safer than using `origin: "*"`, but still permissive.
+      // hackathon fallback: allow any origin but still enable cookies
+      // NOTE: This "echo origin" behavior is safer than origin:"*"
       return cb(null, true);
-
-      // Recommended production version:
-      // return cb(new Error("CORS origin not allowed"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -58,14 +58,10 @@ app.use(
   }),
 );
 
+// Body parser
 app.use(express.json());
 
-/**
- * Parse cookies into `req.cookies`.
- *
- * Why:
- * - Needed for cookie-based auth/session flows.
- */
+// Cookies
 app.use(cookieParser());
 
 app.use(optionalAuth);
@@ -75,9 +71,7 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-
     logger.info({
-      message: "HTTP request completed",
       method: req.method,
       url: req.originalUrl,
       status: res.statusCode,
@@ -91,7 +85,9 @@ app.use((req, res, next) => {
 });
 
 /**
- * API route registration.
+ * =============================
+ * Routes
+ * =============================
  */
 app.use("/auth", authRoutes);
 app.use("/agents", agentRoutes);
@@ -109,16 +105,16 @@ app.use("/transactions", transactionRoutes);
 app.use("/system", systemRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/integrations", integrationRoutes);
-app.use("/solana", solanaRoutes);
 
 /**
- * Basic health endpoint.
+ * =============================
+ * Health Check
+ * =============================
  */
 app.get("/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-
-    return res.status(200).json({
+    res.status(200).json({
       status: "healthy",
       database: "connected",
       uptime: process.uptime(),
@@ -126,14 +122,9 @@ app.get("/health", async (req, res) => {
   } catch (error) {
     logger.error({
       message: "Database health check failed",
-      error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      },
+      error: error.message,
     });
-
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       database: "disconnected",
     });
@@ -141,30 +132,24 @@ app.get("/health", async (req, res) => {
 });
 
 /**
- * 404 handler.
+ * =============================
+ * 404 Handler
+ * =============================
  */
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
 /**
- * Global error handler.
+ * =============================
+ * Global Error Handler
+ * =============================
  */
 app.use((err, req, res, next) => {
   logger.error({
-    message: "Unhandled application error",
-    error: {
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
-    },
-    request: {
-      method: req.method,
-      url: req.originalUrl,
-      userId: req.user?.id || null,
-    },
+    message: err.message,
+    stack: err.stack,
   });
-
   res.status(500).json({ message: "Internal Server Error" });
 });
 

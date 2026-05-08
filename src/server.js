@@ -1,95 +1,16 @@
-require("dotenv").config();
+// src/server.js
+// MODIFIED: starts the HCS watcher after database sync.
+// The watcher polls Hedera Mirror Node for REVERIFICATION_TRIGGERED messages
+// and chains the next scheduled transaction automatically.
 
-const app = require("./app");
+const app      = require("./app");
 const sequelize = require("./config/database");
-const logger = require("./config/logger");
-const { buildSolanaRuntimeStatus } = require("./services/solana/client");
+const logger   = require("./config/logger");
 
+// Register model associations BEFORE syncing
 require("./models");
 
-const rawPort = process.env.PORT || "5000";
-const PORT = Number.parseInt(rawPort, 10);
-
-if (Number.isNaN(PORT) || PORT <= 0) {
-  throw new Error(`Invalid PORT: ${rawPort}`);
-}
-
-let server = null;
-let shuttingDown = false;
-
-function serializeError(error) {
-  if (!error) {
-    return null;
-  }
-
-  return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-    code: error.code,
-    errno: error.errno,
-    syscall: error.syscall,
-    address: error.address,
-    port: error.port,
-    parent: error.parent
-      ? {
-          name: error.parent.name,
-          message: error.parent.message,
-          code: error.parent.code,
-          errno: error.parent.errno,
-          syscall: error.parent.syscall,
-        }
-      : null,
-    original: error.original
-      ? {
-          name: error.original.name,
-          message: error.original.message,
-          code: error.original.code,
-          errno: error.original.errno,
-          syscall: error.original.syscall,
-        }
-      : null,
-  };
-}
-
-async function shutdown(signal) {
-  if (shuttingDown) {
-    return;
-  }
-
-  shuttingDown = true;
-
-  logger.info({
-    message: "Shutdown initiated",
-    signal,
-  });
-
-  try {
-    if (server) {
-      await new Promise((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve();
-        });
-      });
-    }
-
-    await sequelize.close();
-
-    logger.info({ message: "Shutdown completed successfully" });
-    process.exit(0);
-  } catch (error) {
-    logger.error({
-      message: "Shutdown failed",
-      error: serializeError(error),
-    });
-    process.exit(1);
-  }
-}
+const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
@@ -99,63 +20,33 @@ async function startServer() {
     await sequelize.sync();
     logger.info({ message: "Database synced." });
 
-    logger.info({
-      message: "[solana] runtime configured",
-      solana: buildSolanaRuntimeStatus(),
-    });
-
-    server = app.listen(PORT, () => {
+    // ── Start Hedera HCS watcher (if configured) ──────────
+    // Polls Mirror Node every HEDERA_WATCHER_POLL_MS (default: 60s)
+    // Detects fired scheduled transactions → runs reverification → chains next schedule
+    if (process.env.HEDERA_OPERATOR_ID && process.env.HEDERA_OPERATOR_KEY) {
+      try {
+        const { startWatcher } = require("./services/hedera/hcsWatcherService");
+        await startWatcher();
+        logger.info({ message: "[hedera] HCS watcher started" });
+      } catch (watcherErr) {
+        // Watcher failure is non-fatal — rest of server still starts
+        logger.error({
+          message: `[hedera] HCS watcher failed to start: ${watcherErr.message}`,
+        });
+      }
+    } else {
       logger.info({
-        message: "Server running",
-        port: PORT,
-        env: process.env.NODE_ENV || "development",
+        message: "[hedera] HEDERA_OPERATOR_ID/KEY not set — HCS watcher disabled",
       });
-    });
+    }
 
-    server.on("error", (error) => {
-      logger.error({
-        message: "HTTP server failed",
-        error: serializeError(error),
-      });
-      process.exit(1);
+    app.listen(PORT, () => {
+      logger.info({ message: `Server running on port ${PORT}` });
     });
   } catch (error) {
-    logger.error({
-      message: "Failed to start server",
-      error: serializeError(error),
-    });
+    logger.error({ message: "Failed to start server", error });
     process.exit(1);
   }
 }
 
-process.on("SIGINT", () => {
-  void shutdown("SIGINT");
-});
-
-process.on("SIGTERM", () => {
-  void shutdown("SIGTERM");
-});
-
-process.on("uncaughtException", (error) => {
-  logger.error({
-    message: "Uncaught exception",
-    error: serializeError(error),
-  });
-  process.exit(1);
-});
-
-process.on("unhandledRejection", (reason) => {
-  logger.error({
-    message: "Unhandled promise rejection",
-    error:
-      reason instanceof Error
-        ? serializeError(reason)
-        : {
-            message:
-              typeof reason === "string" ? reason : JSON.stringify(reason),
-          },
-  });
-  process.exit(1);
-});
-
-void startServer();
+startServer();

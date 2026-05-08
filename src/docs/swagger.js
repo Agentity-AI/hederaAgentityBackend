@@ -4,14 +4,17 @@ const options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Agentity Solana API",
+      title: "Agentity API",
       version: "1.0.0",
       description:
-        "Agentity backend APIs for Solana-native AI agent identity, simulation, payment, execution, and audit proofs. Protected routes accept Supabase JWTs and the agentity_jwt cookie. Task endpoints also accept active agty_live integration API keys in the Bearer header.",
+        "Agentity backend APIs (Auth, Agents, Simulation, Execution, Dashboard, Integrations). Protected routes accept Supabase JWTs and the agentity_jwt cookie. Task endpoints also accept active agty_live integration API keys in the Bearer header.",
     },
     servers: [
       { url: "http://localhost:5000", description: "Local" },
-      { url: "https://your-solana-agentity-api.example.com", description: "Production" },
+      {
+        url: "https://hederaagentitybackend.onrender.com",
+        description: "Render",
+      },
     ],
     components: {
       securitySchemes: {

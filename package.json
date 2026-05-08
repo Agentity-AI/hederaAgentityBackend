@@ -1,13 +1,15 @@
 {
-  "name": "agentity-solana-backend",
+  "name": "agentity",
   "version": "1.0.0",
-  "description": "Solana-native trust, simulation, payment, and audit backend for AI agents",
+  "description": "Agentity Identity Registry Backend",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
     "smoke": "node scripts/smoke-backend.js",
+    "smoke:wallet:inspect": "node scripts/inspect-smoke-wallet.js",
+    "smoke:wallet:release": "node scripts/release-smoke-wallet.js",
     "cleanup:agent-reputations": "node scripts/cleanup-agent-reputations.js",
     "sandbox:build": "docker build -t agentity-sandbox ./src/sandbox",
     "sandbox:run": "docker run --rm agentity-sandbox",
@@ -19,14 +21,13 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1008.0",
-    "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "^1.98.4",
+    "@hashgraph/sdk": "^2.81.0",
     "@supabase/supabase-js": "^2.98.0",
     "axios": "^1.13.5",
-    "bs58": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
+    "ethers": "^6.16.0",
     "express": "^5.2.1",
     "morgan": "^1.10.1",
     "pg": "^8.18.0",
@@ -38,6 +39,7 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "nodemon": "^3.1.0"
   }
 }

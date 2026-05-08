@@ -137,12 +137,12 @@ function optionalEnum(value, fieldName, allowedValues) {
   return normalized;
 }
 
-function requireSolanaAddress(value, fieldName = "solanaAddress") {
-  const normalized = requireString(value, fieldName, { min: 32, max: 64 });
-  const base58Pattern = /^[1-9A-HJ-NP-Za-km-z]+$/;
+function requireHederaAccountId(value, fieldName = "hederaAccountId") {
+  const normalized = requireString(value, fieldName, { max: 32 });
+  const pattern = /^\d+\.\d+\.\d+$/;
 
-  if (!base58Pattern.test(normalized)) {
-    throw new ValidationError(`${fieldName} must be a valid Solana base58 address`);
+  if (!pattern.test(normalized)) {
+    throw new ValidationError(`${fieldName} must look like 0.0.123456`);
   }
 
   return normalized;
@@ -169,9 +169,9 @@ module.exports = {
   optionalString,
   optionalUrl,
   requireEmail,
+  requireHederaAccountId,
   requireObject,
   requirePassword,
-  requireSolanaAddress,
   requireString,
   requireUuid,
 };

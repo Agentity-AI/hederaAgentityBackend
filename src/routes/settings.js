@@ -7,10 +7,10 @@ const sequelize = require("../config/database");
 const { supabaseAdmin } = require("../config/supabase");
 const Agent = require("../models/agent");
 const AgentBehaviorLog = require("../models/agentBehaviorLog");
+const AgentHcsMessage = require("../models/agentHcsMessage");
+const AgentHcsRegistry = require("../models/agentHcsRegistry");
 const AgentMetadata = require("../models/agentMetadata");
 const AgentReputation = require("../models/agentReputation");
-const AgentSolanaProof = require("../models/agentSolanaProof");
-const AgentSolanaRegistry = require("../models/agentSolanaRegistry");
 const AgentWallet = require("../models/agentWallet");
 const Alert = require("../models/alert");
 const KmsAuditLog = require("../models/kmsAuditLog");
@@ -166,8 +166,8 @@ async function deleteUserData(userId) {
 
       await Promise.all([
         AgentBehaviorLog.destroy({ where: whereAgents, transaction }),
-        AgentSolanaProof.destroy({ where: whereAgents, transaction }),
-        AgentSolanaRegistry.destroy({ where: whereAgents, transaction }),
+        AgentHcsMessage.destroy({ where: whereAgents, transaction }),
+        AgentHcsRegistry.destroy({ where: whereAgents, transaction }),
         AgentMetadata.destroy({ where: whereAgents, transaction }),
         AgentReputation.destroy({ where: whereAgents, transaction }),
         AgentWallet.destroy({ where: whereAgents, transaction }),

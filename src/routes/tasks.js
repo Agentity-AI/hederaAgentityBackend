@@ -10,9 +10,8 @@ const { requireAuth } = require("../middleware/auth");
 const { simulateAgent } = require("../services/sandbox/sandboxService");
 const {
   createPaymentQuote,
-  executeSolanaPayment,
-} = require("../services/solana/paymentService");
-const { createExecutionProof } = require("../services/solana/registryService");
+  executeHederaPayment,
+} = require("../services/hedera/paymentService");
 const { signPayloadWithKms } = require("../services/aws/kmsService");
 const { executeWithCRE } = require("../services/cre/creService");
 const { logEvent } = require("../services/audit/logEvent");
@@ -21,9 +20,7 @@ const { buildSimulationAlert } = require("../services/alerts/alertUtils");
 const { createTransactionRecord } = require("../services/transactions/transactionService");
 const {
   ValidationError,
-  optionalFiniteNumber,
   optionalObject,
-  optionalString,
   requireString,
   requireUuid,
 } = require("../utils/validation");
@@ -32,7 +29,7 @@ const {
  * @openapi
  * tags:
  *   - name: Tasks
- *     description: Solana-native AI agent task coordination and execution lifecycle
+ *     description: Hedera-native AI agent task coordination and execution lifecycle
  */
 
 /**
@@ -72,7 +69,7 @@ const {
  *                 additionalProperties: true
  *                 example:
  *                   target: "swap"
- *                   network: "solana-devnet"
+ *                   network: "hedera-testnet"
  *                   maxSlippageBps: 100
  *           examples:
  *             frontendTaskPayload:
@@ -82,7 +79,7 @@ const {
  *                 taskType: "execution"
  *                 inputPayload:
  *                   target: "swap"
- *                   network: "solana-devnet"
+ *                   network: "hedera-testnet"
  *                   maxSlippageBps: 100
  *     responses:
  *       201:
@@ -322,14 +319,14 @@ router.post("/:id/simulate", requireAuth, async (req, res, next) => {
  * /tasks/{id}/pay:
  *   post:
  *     tags: [Tasks]
- *     summary: Create and settle Solana payment for a task
+ *     summary: Create and settle Hedera payment for a task
  *     description: |
  *       Creates a payment quote, attempts settlement, updates the task status,
  *       and writes a transaction record for downstream reporting.
  *
  *       Frontend testing note:
  *       - call this after simulation has completed
- *       - if Solana real transfers are not enabled, the backend marks the flow as simulated
+ *       - if Hedera is not configured, the backend may still mark the flow as simulated
  *       - payment failures can trigger alert creation
  *     security:
  *       - bearerAuth: []
@@ -339,24 +336,6 @@ router.post("/:id/simulate", requireAuth, async (req, res, next) => {
  *         name: id
  *         required: true
  *         schema: { type: string }
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               currency:
- *                 type: string
- *                 example: "SOL"
- *                 description: Use `SOL` for native transfers or an SPL symbol such as `USDC-SPL` or `CASH-SPL`.
- *               tokenMint:
- *                 type: string
- *                 example: "So11111111111111111111111111111111111111112"
- *                 description: Required when `currency` is not SOL.
- *               tokenDecimals:
- *                 type: integer
- *                 example: 6
  *     responses:
  *       200:
  *         description: Task paid
@@ -369,19 +348,13 @@ router.post("/:id/simulate", requireAuth, async (req, res, next) => {
  *                   type: string
  *                 paymentId:
  *                   type: string
- *                 amount:
+ *                 amountHbar:
  *                   type: number
  *                   example: 0.5
- *                 currency:
- *                   type: string
- *                   example: "SOL"
- *                 solanaSignature:
+ *                 hederaTxId:
  *                   nullable: true
  *                   type: string
- *                   example: "5h6wZrR6s5eYbR5m9yQ6s8zM7sLx..."
- *                 explorerUrl:
- *                   nullable: true
- *                   type: string
+ *                   example: "0.0.5001@1710000000.000000001"
  *                 simulated:
  *                   type: boolean
  *                   example: true
@@ -415,32 +388,17 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
     }
 
     try {
-      const currency =
-        optionalString(req.body?.currency, "currency", { max: 32 }) || "SOL";
-      const tokenMint = optionalString(req.body?.tokenMint, "tokenMint", {
-        max: 64,
-      });
-      const tokenDecimalsValue = optionalFiniteNumber(
-        req.body?.tokenDecimals,
-        "tokenDecimals",
-      );
-      const tokenDecimals =
-        tokenDecimalsValue == null ? null : Math.trunc(tokenDecimalsValue);
-
       const quote = await createPaymentQuote({
         fromUserId: req.user.id,
         toAgentId: task.agent_id,
         taskExecutionId: task.id,
         taskType: task.task_type,
-        currency,
-        tokenMint,
-        tokenDecimals,
         metadata: {
           taskId: task.id,
         },
       });
 
-      const result = await executeSolanaPayment(quote);
+      const result = await executeHederaPayment(quote);
 
       await task.update({
         payment_record_id: result.payment.id,
@@ -453,23 +411,20 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
         taskExecutionId: task.id,
         paymentRecordId: result.payment.id,
         transactionType: "payment",
-        amount: result.payment.amount,
+        amount: result.payment.amount_hbar,
         status: result.payment.status,
         riskRating: result.simulated ? "medium" : "low",
-        txHash: result.signature,
+        txHash: result.txId,
         validationSummary: {
           paymentReference: result.payment.payment_reference,
           simulated: result.simulated,
-          currency: result.payment.currency,
         },
         executionTrace: {
           paymentRecordId: result.payment.id,
-          solanaSignature: result.signature,
-          explorerUrl: result.explorerUrl,
+          hederaTxId: result.txId,
         },
         metadata: {
           taskType: task.task_type,
-          currency: result.payment.currency,
         },
       });
 
@@ -479,7 +434,7 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
         payload: {
           taskId: task.id,
           paymentId: result.payment.id,
-          signature: result.signature,
+          txId: result.txId,
           simulated: result.simulated,
         },
       });
@@ -487,12 +442,8 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
       return res.json({
         taskId: task.id,
         paymentId: result.payment.id,
-        amount: Number(result.payment.amount),
-        amountAtomic: result.payment.amount_atomic,
-        currency: result.payment.currency,
-        tokenMint: result.payment.token_mint,
-        solanaSignature: result.signature,
-        explorerUrl: result.explorerUrl,
+        amountHbar: Number(result.payment.amount_hbar),
+        hederaTxId: result.txId,
         simulated: result.simulated,
         status: "paid",
       });
@@ -531,7 +482,6 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
  *       - loads the related simulation result
  *       - calls the CRE execution service
  *       - signs the execution payload with KMS when a key is linked
- *       - writes a Solana execution proof
  *       - stores a transaction record
  *       - raises a critical alert if execution fails
  *     security:
@@ -571,17 +521,6 @@ router.post("/:id/pay", requireAuth, async (req, res, next) => {
  *                     simulated:
  *                       type: boolean
  *                     auditId:
- *                       type: string
- *                 solanaProof:
- *                   type: object
- *                   properties:
- *                     signature:
- *                       nullable: true
- *                       type: string
- *                     proofHash:
- *                       type: string
- *                     explorerUrl:
- *                       nullable: true
  *                       type: string
  *       400:
  *         description: Task is not yet eligible for execution
@@ -648,13 +587,6 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
           executionResult,
         },
       });
-      const riskScore = Number(simulationResult?.risk_score || 0);
-      const solanaProof = await createExecutionProof({
-        agent,
-        task,
-        executionResult,
-        riskScore,
-      });
 
       await task.update({
         status: "completed",
@@ -662,7 +594,6 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
           ...(task.result_payload || {}),
           execution: executionResult,
           kms: kmsResult,
-          solanaProof,
         },
       });
 
@@ -679,21 +610,12 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
             : simulationResult?.risk_score >= 40
               ? "medium"
               : "low",
-        txHash:
-          solanaProof.signature ||
-          executionResult?.txHash ||
-          executionResult?.transactionHash ||
-          null,
+        txHash: executionResult?.txHash || executionResult?.transactionHash || null,
         validationSummary: {
           kmsAuditId: kmsResult.auditId,
           fallback: executionResult?.fallback || false,
-          solanaProofHash: solanaProof.proofHash,
-          simulatedProof: solanaProof.simulated,
         },
-        executionTrace: {
-          execution: executionResult,
-          solanaProof,
-        },
+        executionTrace: executionResult,
         metadata: {
           taskType: task.task_type,
         },
@@ -705,7 +627,6 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
         payload: {
           taskId: task.id,
           kmsAuditId: kmsResult.auditId,
-          solanaSignature: solanaProof.signature,
         },
       });
 
@@ -715,7 +636,6 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
         status: "completed",
         execution: executionResult,
         kms: kmsResult,
-        solanaProof,
       });
     } catch (executionError) {
       await task.update({ status: "failed" });
@@ -794,19 +714,16 @@ router.post("/:id/execute", requireAuth, async (req, res, next) => {
  *                           id:
  *                             type: string
  *                             example: "1d95072e-c995-4ecf-8f1a-5db5a3d8a111"
- *                           amount:
+ *                           amountHbar:
  *                             type: number
  *                             example: 1.5
- *                           currency:
- *                             type: string
- *                             example: "SOL"
  *                           status:
  *                             type: string
  *                             example: "paid"
- *                           solanaSignature:
+ *                           hederaTxId:
  *                             nullable: true
  *                             type: string
- *                             example: "5h6wZrR6s5eYbR5m9yQ6s8zM7sLx..."
+ *                             example: "0.0.7148109@1710601234.123456789"
  *                       createdAt:
  *                         type: string
  *                         format: date-time
@@ -831,15 +748,7 @@ router.get("/history", requireAuth, async (req, res, next) => {
           model: PaymentRecord,
           as: "payment",
           required: false,
-          attributes: [
-            "id",
-            "amount",
-            "amount_atomic",
-            "currency",
-            "status",
-            "solana_signature",
-            "payment_reference",
-          ],
+          attributes: ["id", "amount_hbar", "status", "hedera_tx_id"],
         },
       ],
       order: [["created_at", "DESC"]],
@@ -856,12 +765,9 @@ router.get("/history", requireAuth, async (req, res, next) => {
         payment: task.payment
           ? {
               id: task.payment.id,
-              amount: Number(task.payment.amount),
-              amountAtomic: task.payment.amount_atomic,
-              currency: task.payment.currency,
+              amountHbar: Number(task.payment.amount_hbar),
               status: task.payment.status,
-              solanaSignature: task.payment.solana_signature,
-              explorerUrl: task.payment.payment_reference,
+              hederaTxId: task.payment.hedera_tx_id,
             }
           : null,
         createdAt: task.created_at,

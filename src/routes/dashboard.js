@@ -90,15 +90,15 @@ const { buildDashboard } = require("../services/dashboard/buildDashboard");
  *                       example: "b9e3f7d1a2c4"
  *                     public_key:
  *                       type: string
- *                       example: "8uQhQMGm4qMVM9Mp2HcJqKqB7GMGS7gqKq2m2ZzC7C4u"
+ *                       example: "0x9f3C2B4d7A8e5F1b2C3D4E5F6A7B8C9D0E1F2A3B"
  *                     blockchain_agent_id:
  *                       nullable: true
- *                       type: string
- *                       example: "agent-profile-pda"
+ *                       type: integer
+ *                       example: 1
  *                     blockchain_tx_hash:
  *                       nullable: true
  *                       type: string
- *                       example: "5h6wZrR6s5eYbR5m9yQ6s8zM7sLx..."
+ *                       example: "0xabc123..."
  *                     blockchain_registered_at:
  *                       nullable: true
  *                       type: string
@@ -127,7 +127,7 @@ const { buildDashboard } = require("../services/dashboard/buildDashboard");
  *                         type: object
  *                         additionalProperties: true
  *                         example:
- *                           solanaSyncStatus: "synced"
+ *                           hederaSyncStatus: "synced"
  *                       createdAt:
  *                         type: string
  *                         format: date-time

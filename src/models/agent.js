@@ -32,19 +32,19 @@ const Agent = sequelize.define(
       defaultValue: "pending",
     },
     blockchain_agent_id: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "Optional on-chain agent profile PDA or registry identifier",
+      comment: "On-chain agent ID from ERC-8004 contract",
     },
     blockchain_tx_hash: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(66),
       allowNull: true,
-      comment: "Solana transaction signature for the latest registry sync",
+      comment: "Transaction hash of the registration on Avalanche",
     },
     blockchain_registered_at: {
       type: DataTypes.DATE,
       allowNull: true,
-      comment: "Timestamp when agent was registered on Solana",
+      comment: "Timestamp when agent was registered on-chain",
     },
     blockchain_sync_status: {
       type: DataTypes.ENUM("pending", "synced", "failed"),

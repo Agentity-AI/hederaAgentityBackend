@@ -8,17 +8,16 @@ const { requireAuth } = require("../middleware/auth");
 const { logEvent } = require("../services/audit/logEvent");
 const {
   ValidationError,
-  requireSolanaAddress,
+  requireHederaAccountId,
   requireString,
   requireUuid,
 } = require("../utils/validation");
-const { getSolanaCluster } = require("../config/solana");
 
 /**
  * @openapi
  * tags:
  *   - name: Wallets
- *     description: Solana wallet linkage for agents
+ *     description: Hedera wallet linkage for agents
  */
 
 /**
@@ -26,7 +25,7 @@ const { getSolanaCluster } = require("../config/solana");
  * /wallets/link:
  *   post:
  *     tags: [Wallets]
- *     summary: Link a Solana wallet to an authenticated user's agent
+ *     summary: Link a Hedera wallet to an authenticated user's agent
  *     security:
  *       - bearerAuth: []
  *       - cookieAuth: []
@@ -36,19 +35,15 @@ const { getSolanaCluster } = require("../config/solana");
  *         application/json:
  *           schema:
  *             type: object
- *             required: [agentId, solanaAddress]
+ *             required: [agentId, hederaAccountId, hederaPublicKey]
  *             properties:
  *               agentId:
  *                 type: string
- *               solanaAddress:
+ *               hederaAccountId:
  *                 type: string
- *                 example: "8uQhQMGm4qMVM9Mp2HcJqKqB7GMGS7gqKq2m2ZzC7C4u"
- *               solanaPublicKey:
+ *                 example: "0.0.123456"
+ *               hederaPublicKey:
  *                 type: string
- *                 description: Optional public key override. Defaults to `solanaAddress`.
- *               network:
- *                 type: string
- *                 example: "devnet"
  *               kmsKeyId:
  *                 type: string
  *     responses:
@@ -63,14 +58,11 @@ const { getSolanaCluster } = require("../config/solana");
  *                   type: string
  *                 agentId:
  *                   type: string
- *                 solanaAddress:
+ *                 hederaAccountId:
  *                   type: string
- *                   example: "8uQhQMGm4qMVM9Mp2HcJqKqB7GMGS7gqKq2m2ZzC7C4u"
- *                 solanaPublicKey:
+ *                   example: "0.0.8479610"
+ *                 hederaPublicKey:
  *                   type: string
- *                 network:
- *                   type: string
- *                   example: "devnet"
  *                 kmsKeyId:
  *                   nullable: true
  *                   type: string
@@ -87,24 +79,20 @@ const { getSolanaCluster } = require("../config/solana");
  *       404:
  *         description: Agent not found
  *       409:
- *         description: Solana address already linked to another user's agent
+ *         description: Hedera account already linked to another user's agent
  */
 router.post("/link", requireAuth, async (req, res, next) => {
   try {
     const trimmedAgentId = requireUuid(req.body?.agentId, "agentId");
-    const trimmedSolanaAddress = requireSolanaAddress(
-      req.body?.solanaAddress || req.body?.walletAddress,
-      "solanaAddress",
+    const trimmedHederaAccountId = requireHederaAccountId(
+      req.body?.hederaAccountId,
+      "hederaAccountId",
     );
-    const trimmedSolanaPublicKey = req.body?.solanaPublicKey
-      ? requireString(req.body.solanaPublicKey, "solanaPublicKey", {
-          min: 32,
-          max: 255,
-        })
-      : trimmedSolanaAddress;
-    const network = req.body?.network
-      ? requireString(req.body.network, "network", { min: 3, max: 32 })
-      : getSolanaCluster();
+    const trimmedHederaPublicKey = requireString(
+      req.body?.hederaPublicKey,
+      "hederaPublicKey",
+      { min: 16, max: 255 },
+    );
     const trimmedKmsKeyId = req.body?.kmsKeyId
       ? requireString(req.body.kmsKeyId, "kmsKeyId", { min: 3, max: 255 })
       : null;
@@ -126,7 +114,7 @@ router.post("/link", requireAuth, async (req, res, next) => {
 
     const existingWalletForAccount = await AgentWallet.findOne({
       where: {
-        solana_address: trimmedSolanaAddress,
+        hedera_account_id: trimmedHederaAccountId,
         agent_id: { [Op.ne]: agent.id },
       },
       include: [
@@ -145,7 +133,7 @@ router.post("/link", requireAuth, async (req, res, next) => {
       existingWalletForAccount.agent.creator_id !== req.user.id
     ) {
       return res.status(409).json({
-        message: "This Solana address is already linked to another user's agent",
+        message: "This Hedera account is already linked to another user's agent",
       });
     }
 
@@ -159,26 +147,23 @@ router.post("/link", requireAuth, async (req, res, next) => {
 
     if (existingWalletForAgent) {
       await existingWalletForAgent.update({
-        solana_address: trimmedSolanaAddress,
-        solana_public_key: trimmedSolanaPublicKey,
-        network,
+        hedera_account_id: trimmedHederaAccountId,
+        hedera_public_key: trimmedHederaPublicKey,
         kms_key_id: trimmedKmsKeyId || null,
         status: "linked",
       });
     } else if (existingWalletForAccount) {
       await existingWalletForAccount.update({
         agent_id: agent.id,
-        solana_public_key: trimmedSolanaPublicKey,
-        network,
+        hedera_public_key: trimmedHederaPublicKey,
         kms_key_id: trimmedKmsKeyId || null,
         status: "linked",
       });
     } else {
       await AgentWallet.create({
         agent_id: agent.id,
-        solana_address: trimmedSolanaAddress,
-        solana_public_key: trimmedSolanaPublicKey,
-        network,
+        hedera_account_id: trimmedHederaAccountId,
+        hedera_public_key: trimmedHederaPublicKey,
         kms_key_id: trimmedKmsKeyId || null,
         status: "linked",
       });
@@ -192,8 +177,7 @@ router.post("/link", requireAuth, async (req, res, next) => {
       action: "wallet_link",
       agentId: agent.id,
       payload: {
-        solanaAddress: trimmedSolanaAddress,
-        network,
+        hederaAccountId: trimmedHederaAccountId,
         kmsKeyId: trimmedKmsKeyId || null,
       },
     });
@@ -201,9 +185,8 @@ router.post("/link", requireAuth, async (req, res, next) => {
     return res.json({
       id: wallet.id,
       agentId: wallet.agent_id,
-      solanaAddress: wallet.solana_address,
-      solanaPublicKey: wallet.solana_public_key,
-      network: wallet.network,
+      hederaAccountId: wallet.hedera_account_id,
+      hederaPublicKey: wallet.hedera_public_key,
       kmsKeyId: wallet.kms_key_id,
       status: wallet.status,
       createdAt: wallet.created_at,
@@ -218,7 +201,7 @@ router.post("/link", requireAuth, async (req, res, next) => {
     if (error?.name === "SequelizeUniqueConstraintError") {
       return res.status(409).json({
         message:
-          "Wallet link conflict detected. This Solana address may already be linked.",
+          "Wallet link conflict detected. This Hedera account may already be linked.",
       });
     }
 

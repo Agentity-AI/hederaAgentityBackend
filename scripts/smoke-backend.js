@@ -1,15 +1,11 @@
 require("dotenv").config();
 
-const { Keypair } = require("@solana/web3.js");
-
 const BASE_URL = process.env.SMOKE_BASE_URL || "http://localhost:5000";
-const SOLANA_OPERATOR_CONFIGURED = Boolean(
-  process.env.SOLANA_OPERATOR_KEYPAIR_JSON ||
-    process.env.SOLANA_OPERATOR_SECRET_KEY ||
-    process.env.SOLANA_OPERATOR_KEYPAIR_PATH,
+const HEDERA_CONFIGURED = Boolean(
+  process.env.HEDERA_OPERATOR_ID && process.env.HEDERA_OPERATOR_KEY,
 );
 const SMOKE_WALLET_CONFIGURED = Boolean(
-  process.env.SMOKE_SOLANA_ADDRESS || process.env.SMOKE_SOLANA_PUBLIC_KEY,
+  process.env.SMOKE_HEDERA_ACCOUNT_ID && process.env.SMOKE_HEDERA_PUBLIC_KEY,
 );
 
 function createRunner() {
@@ -95,27 +91,26 @@ async function main() {
   const password =
     process.env.SMOKE_PASSWORD || `SmokeTest!${String(nonce).slice(-6)}`;
   const name = process.env.SMOKE_NAME || `Smoke Tester ${String(nonce).slice(-4)}`;
-  const generatedWallet = Keypair.generate().publicKey.toBase58();
   const walletDetails = SMOKE_WALLET_CONFIGURED
     ? {
-        solanaAddress:
-          process.env.SMOKE_SOLANA_ADDRESS || process.env.SMOKE_SOLANA_PUBLIC_KEY,
-        solanaPublicKey:
-          process.env.SMOKE_SOLANA_PUBLIC_KEY || process.env.SMOKE_SOLANA_ADDRESS,
+        hederaAccountId: process.env.SMOKE_HEDERA_ACCOUNT_ID,
+        hederaPublicKey: process.env.SMOKE_HEDERA_PUBLIC_KEY,
         kmsKeyId: process.env.SMOKE_KMS_KEY_ID || process.env.AWS_KMS_KEY_ID || null,
       }
-    : {
-        solanaAddress: generatedWallet,
-        solanaPublicKey: generatedWallet,
-        kmsKeyId: null,
-      };
+    : !HEDERA_CONFIGURED
+      ? {
+          hederaAccountId: "0.0.5001",
+          hederaPublicKey: "smoke-public-key",
+          kmsKeyId: null,
+        }
+      : null;
 
   console.log("[SMOKE] Backend smoke test starting");
   console.log(
     JSON.stringify(
       {
         baseUrl: BASE_URL,
-        solanaOperatorConfigured: SOLANA_OPERATOR_CONFIGURED,
+        hederaConfigured: HEDERA_CONFIGURED,
         smokeWalletConfigured: SMOKE_WALLET_CONFIGURED,
         creConfigured: Boolean(process.env.CRE_WEBHOOK_URL),
         kmsConfigured: Boolean(process.env.AWS_REGION && process.env.AWS_KMS_KEY_ID),
@@ -168,22 +163,28 @@ async function main() {
 
   const agent = await runner.step("Register agent", "POST", "/agents/register", {
     agentName: `Smoke Agent ${String(nonce).slice(-4)}`,
-    publicKey: generatedWallet,
+    publicKey: `0xsmoke${nonce}`,
     description: "Automated backend smoke test agent",
     agentType: "workflow-test-agent",
   });
 
-  await runner.step("Link agent wallet", "POST", "/wallets/link", {
-    agentId: agent.id,
-    solanaAddress: walletDetails.solanaAddress,
-    solanaPublicKey: walletDetails.solanaPublicKey,
-    kmsKeyId: walletDetails.kmsKeyId,
-  });
+  if (walletDetails) {
+    await runner.step("Link agent wallet", "POST", "/wallets/link", {
+      agentId: agent.id,
+      hederaAccountId: walletDetails.hederaAccountId,
+      hederaPublicKey: walletDetails.hederaPublicKey,
+      kmsKeyId: walletDetails.kmsKeyId,
+    });
+  } else {
+    console.log(
+      "[SKIP] Wallet, payment, and execution checks skipped. Set SMOKE_HEDERA_ACCOUNT_ID and SMOKE_HEDERA_PUBLIC_KEY to test the live Hedera flow.",
+    );
+  }
 
   await runner.step("Verify agent", "POST", `/agents/${agent.id}/verify`, walletDetails
     ? {
-        solanaAddress: walletDetails.solanaAddress,
-        solanaPublicKey: walletDetails.solanaPublicKey,
+        hederaAccountId: walletDetails.hederaAccountId,
+        hederaPublicKey: walletDetails.hederaPublicKey,
         kmsKeyId: walletDetails.kmsKeyId,
       }
     : {});
@@ -208,7 +209,7 @@ async function main() {
     inputPayload: {
       target: "swap",
       amount: 1,
-      network: process.env.SOLANA_CLUSTER || "devnet",
+      network: process.env.HEDERA_NETWORK || "testnet",
     },
   });
 
@@ -219,8 +220,10 @@ async function main() {
   let payment = null;
   let execution = null;
 
-  payment = await runner.step("Pay task", "POST", `/tasks/${task.id}/pay`);
-  execution = await runner.step("Execute task", "POST", `/tasks/${task.id}/execute`);
+  if (walletDetails) {
+    payment = await runner.step("Pay task", "POST", `/tasks/${task.id}/pay`);
+    execution = await runner.step("Execute task", "POST", `/tasks/${task.id}/execute`);
+  }
 
   const policy = await runner.step("Create transaction policy", "POST", "/transactions/policies", {
     name: `Smoke Policy ${String(nonce).slice(-4)}`,
@@ -253,8 +256,7 @@ async function main() {
         createdTaskId: task.id,
         createdPolicyId: policy.id,
         livePaymentAndExecutionTested: Boolean(walletDetails),
-        solanaPaymentSimulated: payment?.simulated ?? null,
-        solanaProofSimulated: execution?.solanaProof?.simulated ?? null,
+        hederaPaymentSimulated: payment?.simulated ?? null,
         creFallbackUsed: execution?.execution?.fallback ?? null,
         kmsSignatureSimulated: execution?.kms?.simulated ?? null,
         kmsAuditId: execution?.kms?.auditId ?? null,
@@ -264,9 +266,9 @@ async function main() {
     ),
   );
 
-  if (!SOLANA_OPERATOR_CONFIGURED) {
+  if (!walletDetails) {
     console.log(
-      "\n[SMOKE] To write live Solana devnet proofs, add SOLANA_OPERATOR_KEYPAIR_JSON or SOLANA_OPERATOR_KEYPAIR_PATH. To send real payments too, set SOLANA_ENABLE_REAL_TRANSFERS=true and fund the operator wallet.",
+      "\n[SMOKE] To test live Hedera payment and execution next, add these env vars and rerun `npm run smoke`:\n- SMOKE_HEDERA_ACCOUNT_ID\n- SMOKE_HEDERA_PUBLIC_KEY\n- optionally SMOKE_KMS_KEY_ID",
     );
   }
 }

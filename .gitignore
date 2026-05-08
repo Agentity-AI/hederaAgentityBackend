@@ -73,7 +73,3 @@ Desktop.ini
 *.tgz
 
 docker-compose.override.yml
-
-.config/solana/
-**/agentity-operator.json
-**/id.json

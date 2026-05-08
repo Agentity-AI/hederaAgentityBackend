@@ -109,7 +109,7 @@ function formatPolicy(policy) {
  *                       amountUnit:
  *                         nullable: true
  *                         type: string
- *                         example: "SOL"
+ *                         example: "AVAX"
  *                       status:
  *                         type: string
  *                         example: "paid"

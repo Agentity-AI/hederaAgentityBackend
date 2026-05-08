@@ -1,0 +1,5 @@
+{
+  "schedule": "*/5 * * * *",
+  "contractAddress": "0x0d5b1D58990c2032556a1C053Fd79073e5F75714",
+  "network": "avalanche-fuji"
+}
